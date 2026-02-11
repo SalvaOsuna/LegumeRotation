@@ -11,6 +11,7 @@
 #' @return A list containing a summary report and the cleaned data.
 #' @export
 #' @importFrom dplyr group_by summarize n n_distinct filter select all_of
+#'
 inspect_met <- function(data, unique_id_col, env_col, genotype_col, design_cols, trait_cols, crop_col = "Crop") {
 
   # 1. Basic Column Check
