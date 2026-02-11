@@ -55,7 +55,7 @@ inspect_traits <- function(data, trait_cols, env_col = NULL, plot = TRUE) {
         ggplot2::facet_wrap(~Trait, scales = "free_y") +
         ggplot2::theme_minimal() +
         ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
-        ggplot2::labs(title = paste0(data$Crop[1],"- Trait Distribution by Environment"), y = "Value")
+        ggplot2::labs(title = paste0(data$Crop[1]," - Trait Distribution by Environment"), y = "Value")
 
     } else {
       # Histogram for Single Environment
@@ -63,7 +63,7 @@ inspect_traits <- function(data, trait_cols, env_col = NULL, plot = TRUE) {
         ggplot2::geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.8) +
         ggplot2::facet_wrap(~Trait, scales = "free") +
         ggplot2::theme_minimal() +
-        ggplot2::labs(title = paste0(data$Crop[1],"- Trait Distribution (Global)"), y = "Count")
+        ggplot2::labs(title = paste0(data$Crop[1]," - Trait Distribution (Global)"), y = "Count")
     }
   }
 
