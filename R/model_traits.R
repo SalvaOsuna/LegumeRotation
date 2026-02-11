@@ -59,7 +59,7 @@ model_traits <- function(data, method = "SpATS", trait_cols, gen_col, env_col, r
             response = trait,
             genotype = gen_col,
             genotype.as.random = TRUE,
-            spatial = ~ SpATS::PSANOVA(Col_Num, Row_Num, nseg = c(10, 10), nest.div = 2),
+            spatial = ~ SpATS::PSANOVA(Col_Num, Row_Num, nseg = c(20, 30), degree = 3, pord = 2),
             fixed = as.formula(fixed_form),
             data = env_data,
             control = list(tolerance = 1e-03, monitoring = 0)
@@ -80,7 +80,7 @@ model_traits <- function(data, method = "SpATS", trait_cols, gen_col, env_col, r
             Var_Gen = m$var.comp[gen_col], Var_Res = m$psi[1]
           )
 
-          # 5. NEW: Extract Spatial Trend
+          # 5. Extract Spatial Trend
           # obtain.spatialtrend returns a list with grid coordinates and the fitted matrix
           st <- SpATS::obtain.spatialtrend(m)
 
