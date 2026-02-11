@@ -4,7 +4,5 @@
 .httr-oauth
 .DS_Store
 .quarto
-raw-data/ACTIVATE_lentil.txt
-raw-data/ACTIVATE_wheat.txt
 data-raw/ACTIVATE_lentil.txt
 data-raw/ACTIVATE_wheat.txt
