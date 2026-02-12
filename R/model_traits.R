@@ -50,6 +50,16 @@ model_traits <- function(data, method = "SpATS", trait_cols, gen_col, env_col, r
 
           if (!is.null(rep_col)) env_data[[rep_col]] <- as.factor(env_data[[rep_col]])
 
+          # Dynamic nseg Calculation (The Tweak)
+          # We check the max dimension and take half.
+          # We use max(1, ...) to prevent errors if a dimension is 1 (e.g. single row trial)
+          max_r <- max(env_data$Row_Num, na.rm = TRUE)
+          max_c <- max(env_data$Col_Num, na.rm = TRUE)
+
+          nseg_r <- max(1, floor(max_r / 2))
+          nseg_c <- max(1, floor(max_c / 2))
+
+
           # 2. Define Fixed Formula
           fixed_form <- "~ 1"
           if (!is.null(rep_col)) fixed_form <- paste("~", rep_col)
@@ -59,7 +69,7 @@ model_traits <- function(data, method = "SpATS", trait_cols, gen_col, env_col, r
             response = trait,
             genotype = gen_col,
             genotype.as.random = TRUE,
-            spatial = ~ SpATS::PSANOVA(Col_Num, Row_Num, nseg = c(20, 30), degree = 3, pord = 2),
+            spatial = ~ SpATS::PSANOVA(Row_Num,Col_Num, nseg = c(nseg_c, nseg_r), degree = 3, pord = 2),
             fixed = as.formula(fixed_form),
             data = env_data,
             control = list(tolerance = 1e-03, monitoring = 0)
@@ -82,17 +92,25 @@ model_traits <- function(data, method = "SpATS", trait_cols, gen_col, env_col, r
 
           # 5. Extract Spatial Trend
           # obtain.spatialtrend returns a list with grid coordinates and the fitted matrix
-          st <- SpATS::obtain.spatialtrend(m)
+          st <- SpATS::obtain.spatialtrend(m, grid = c(max_c, max_r))
 
-          # Flatten the matrix into a dataframe for ggplot
-          # The matrix 'st$fit' has rows = st$row.p and cols = st$col.p
-          st_df <- expand.grid(Row = st$row.p, Col = st$col.p)
-          st_df$Trend <- as.vector(st$fit) # Flattens by column
+          # Convert matrix to data frame
+          st_df <- melt(st$fit,
+                     varnames = c("Row", "Col"),
+                     value.name = "Value")
+          st_df <- st_df |>
+            rename(Trend = Value)
 
+          # Calculate Percentage Deviation
+          # Formula: (Trend Value / Mean of Trait) * 100
+          trait_mean <- mean(env_data[[trait]], na.rm = TRUE)
+          st_df$Trend_Pct <- (st_df$Trend / trait_mean) * 100
+
+          # Add columns for Trait and Environment
           results_spatial[[paste(env, trait)]] <- st_df |>
             dplyr::mutate(Environment = env, Trait = trait)
 
-          cat(paste("✔ Solved:", env, trait, "| H2:", round(h2, 2), "\n"))
+          cat(paste("✔ Solved:", env, trait, "| H2:", round(h2, 2), "| Segments used (R x C):", nseg_r, "x", nseg_c, "\n"))
 
         }, error = function(e) {
           warning(paste("✖ SpATS Failed for", env, trait, ":", e$message))
