@@ -72,30 +72,46 @@ model_legacy_facet <- function(data, trait, env_col,
     colnames(wheat_global_means) <- c(curr_gen_col, "Global_Wheat_Mean")
     # ====================================================================
 
-    # 3. Process Each Lentil (The Facet Analysis)
+    # Process Each Lentil (The Facet Analysis)
+    cat(paste("Calculating Spatially-Corrected Lentil Means for:", env, "...\n"))
+
+    m_lentil <- SpATS::SpATS(
+      response = trait,
+      genotype = prev_gen_col,     # NEW: Lentil is now the target
+      genotype.as.random = TRUE,   # Get BLUPs
+      spatial = ~ SpATS::PSANOVA(Col_Num, Row_Num, nseg = c(nseg_c, nseg_r), degree = 3, pord = 2),
+      fixed = as.formula(fixed_form),
+      data = env_data,
+      control = list(tolerance = 1e-03, monitoring = 0)
+    )
+
+    lentil_preds <- predict(m_lentil, which = prev_gen_col)
+    lentil_observed_means <- lentil_preds[, c(prev_gen_col, "predicted.values")]
+    colnames(lentil_observed_means) <- c(prev_gen_col, "Observed_Yield_BLUP")
+
+    # Combine and Calculate Legacy (The Facet Analysis)
+    # We map the raw data to figure out WHO was paired with WHOM,
+    # but we use the BLUPs to do the actual math.
+
     lentil_results <- env_data |>
       dplyr::group_by(.data[[prev_gen_col]]) |>
       dplyr::summarize(
-        Observed_Yield = mean(.data[[trait]], na.rm=TRUE),
-
-        # KEY STEP: Calculate the "Facet Mean"
-        # We look at exactly which Wheats were paired with this Lentil
-        # And we take the average of THEIR Global Means.
+        # Calculate the Facet Mean using the Wheat BLUPs from Model 1
         Facet_Mean = mean(
           wheat_global_means$Global_Wheat_Mean[
             wheat_global_means[[curr_gen_col]] %in% unique(.data[[curr_gen_col]])
           ],
           na.rm = TRUE
         ),
-
-        # Store the list of partners for reference (optional but useful)
-        N_Wheat_Partners = dplyr::n_distinct(.data[[curr_gen_col]])
+        N_Wheat_Partners = dplyr::n_distinct(.data[[curr_gen_col]]),
+        .groups = "drop"
       ) |>
+      # Merge in the Lentil BLUPs from Model 2
+      dplyr::left_join(lentil_observed_means, by = setNames(prev_gen_col, prev_gen_col)) |>
       dplyr::mutate(
         Environment = env,
-        # The Legacy is the specific bump this Lentil gave its partners
-        # relative to how those partners performed elsewhere
-        Legacy_Value = Observed_Yield - Facet_Mean,
+        # The Legacy is now: Spatially Corrected Reality minus Spatially Corrected Expectation
+        Legacy_Value = Observed_Yield_BLUP - Facet_Mean,
         Legacy_Pct = (Legacy_Value / Facet_Mean) * 100
       ) |>
       dplyr::arrange(dplyr::desc(Legacy_Value))
