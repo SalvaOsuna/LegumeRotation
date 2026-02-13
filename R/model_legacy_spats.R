@@ -138,7 +138,7 @@ model_legacy_spats <- function(data, trait, env_col,
 #' @importFrom SpATS SpATS predict.SpATS PSANOVA
 #' @importFrom dplyr mutate arrange desc bind_rows group_by summarize left_join
 #' @importFrom ggplot2 ggplot aes geom_point geom_segment coord_flip theme_minimal labs geom_hline
-model_legacy_spats <- function(data, trait, env_col,
+model_legacy_spats2 <- function(data, trait, env_col,
                                prev_gen_col = "Previous_Crop_Genotype",
                                curr_gen_col = "Genotype",
                                spatial_cols = c("Row", "Col"),

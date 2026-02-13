@@ -95,7 +95,7 @@ model_traits <- function(data, method = "SpATS", trait_cols, gen_col, env_col, r
           st <- SpATS::obtain.spatialtrend(m, grid = c(max_c, max_r))
 
           # Convert matrix to data frame
-          st_df <- melt(st$fit,
+          st_df <- reshape2::melt(st$fit,
                      varnames = c("Row", "Col"),
                      value.name = "Value")
           st_df <- st_df |>
