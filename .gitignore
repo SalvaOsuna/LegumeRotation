@@ -7,7 +7,9 @@
 data-raw/ACTIVATE_lentil.txt
 data-raw/ACTIVATE_wheat.txt
 data-raw/ACTIVATE_lentil_subsample.txt
+data-raw/alfa_diversity_rarefied_final_Bokulich_metadata.txt
 Figures/cor YLD vs PRT_legacy value highlighted.png
 Figures/Lentil Legacy Values.png
 Figures/Lentil Legacy Values2.png
 Figures/Lentil Legacy Values3.png
+Figures/corr_traits_ENVs.png
