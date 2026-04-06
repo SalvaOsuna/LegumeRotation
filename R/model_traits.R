@@ -56,8 +56,8 @@ model_traits <- function(data, method = "SpATS", trait_cols, gen_col, env_col, r
           max_r <- max(env_data$Row_Num, na.rm = TRUE)
           max_c <- max(env_data$Col_Num, na.rm = TRUE)
 
-          nseg_r <- max(1, floor(max_r / 2))
-          nseg_c <- max(1, floor(max_c / 2))
+          nseg_r <- min(round(max_r / 4), 35)
+          nseg_c <- min(round(max_c / 4), 35)
 
 
           # 2. Define Fixed Formula

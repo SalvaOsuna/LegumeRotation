@@ -41,8 +41,8 @@ plot_spatial_trends <- function(spatial_data, traits = NULL, envs = NULL, mode =
 
     ggplot2::theme_minimal() +
     ggplot2::labs(
-      title = paste("Spatial Trends (", tools::toTitleCase(mode), ")", sep=""),
-      subtitle = subtitle_lab,
+      #title = paste("Spatial Trends (", tools::toTitleCase(mode), ")", sep=""),
+      #subtitle = subtitle_lab,
       x = "Row",
       y = "Column"
     ) +
