@@ -2,11 +2,11 @@
 ---
 ---
 
-# Legume Rotation Experiment: Design, Modeling Challenges, and Analytical Targets
+# ACTIVATE Lentil-Wheat Rotation Experiment: Design, Modeling Challenges, and Analytical Targets
 
-## Purpose of the Package
+## Objectives
 
-`LegumeRotation` supports analysis of a two-year lentil-wheat rotation experiment. The package has two connected goals:
+`LegumeRotation` is an R package designed to supports analysis of a two-year lentil-wheat rotation experiment. The package has two connected goals:
 
 1.  Characterize phenotypic performance of lentil and wheat as independent field trials.
 2.  Test whether the lentil genotype grown in a plot in Year 1 influences the agronomic performance of the wheat genotype grown in the same plot in Year 2.
@@ -23,11 +23,11 @@ These two questions are related, but they are not identical. The first asks abou
 
 ## Experimental Design
 
-The field layout contains 76 rows by 30 columns, for 2,280 plots per trial layout, organized into incomplete blocks. The experiment includes:
+The field layout contains 76 rows by 30 columns, for 2,280 plots per trial layout, organized into 48 incomplete blocks. The experiment includes:
 
 -   100 lentil genotypes in Year 1.
 -   100 wheat genotypes in Year 2.
--   Approximately 20 observations per genotype per location for the full-trial phenotypic layers.
+-   20 observations per genotype per location for the full-trial phenotypic layers.
 -   A sparse lentil-wheat pairing network rather than a complete factorial design.
 
 A complete lentil by wheat factorial would require:
@@ -36,7 +36,7 @@ A complete lentil by wheat factorial would require:
 100 lentil genotypes x 100 wheat genotypes = 10,000 genotype combinations
 ```
 
-before replication and locations. That is not feasible in the available field space. Instead, the design uses a sparse or incomplete factorial structure. Each lentil genotype is paired with a subset of wheat genotypes, often around 10 wheat partners. For example:
+before replication and locations. That is not feasible in the available field space. Instead, the design uses a sparse or incomplete factorial structure. Each lentil genotype is paired with a subset of 10 wheat partners, following this sctructure:
 
 ``` text
 L001 paired with W001-W010
@@ -69,7 +69,7 @@ The subsample layer includes more detailed biomass and nutrient traits, such as:
 biomass, straw, seed weight, NIR, LECO C/N/P, NHI, C:N ratios
 ```
 
-This layer has a lower-density sampling structure, with treatment observations plus repeated check observations nested in blocks. It is analytically useful, but its design differs from the full phenotypic layer, so checks and block structure need careful handling.
+This layer has a lower-density sampling structure ([2 reps x genotype + checks] x site), with treatment observations plus repeated check observations nested in blocks. It is analytically useful, but its design differs from the full phenotypic layer, so checks and block structure need careful handling.
 
 ### Wheat Full Trial
 
@@ -522,4 +522,3 @@ These correlations are exploratory. They can identify hypotheses, but they do no
 -   Sparse pair compatibility results are conditional on the observed design.
 -   Singular fits can occur in pair models when variance components are small or a facet has too little information. This is expected in sparse networks and should be interpreted carefully.
 -   The testing script `test_rotation_formulas_and_plots.R` is the best place to validate formulas and plots before promoting analyses into package vignettes or manuscript-ready scripts.
-

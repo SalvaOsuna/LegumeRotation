@@ -161,7 +161,7 @@ lentil_lme4_models <- safe_run("model_traits lme4: lentil YLD and PRT", {
     trait_cols = c("YLD", "PRT"),
     gen_col = "Lentil",
     env_col = "ENV",
-    fixed_model = ~ 1,
+    fixed_model = ~ Rep_gen + Block,
     random_model = ~ (1 | Lentil)
   )
 })
@@ -185,7 +185,7 @@ wheat_lme4_models <- safe_run("model_traits lme4: wheat Y.ADJ and PRO", {
     trait_cols = c("Y.ADJ", "PRO"),
     gen_col = "Wheat",
     env_col = "ENV",
-    fixed_model = ~ 1,
+    fixed_model = ~ Rep_gen + Block,
     random_model = ~ (1 | Wheat)
   )
 })
@@ -231,7 +231,7 @@ if (RUN_SPATS_TRAIT_MODELS) {
       trait_cols = c("Y.ADJ"),
       gen_col = "Wheat",
       env_col = "ENV",
-      rep_col = "Rep_combo",
+      rep_col = "Rep_gen",
       spatial_cols = c("Row", "Col")
     )
   })
@@ -264,7 +264,7 @@ simple_legacy <- safe_run("get_legacy_values: simple predecessor model", {
     data = rotation_data,
     trait = "Y.ADJ",
     env_col = "ENV",
-    rep_col = "Block"
+    rep_col = "Rep_gen"
   )
 })
 show_plot(simple_legacy$plot, "simple_legacy_yadj")
@@ -336,7 +336,6 @@ if (RUN_ROTATION_MODELS) {
   )
 }
 
-
 # title: Test the pair-specific compatibility formula.
 # This answers which observed lentil-wheat pairs perform better or worse than expected from additive lentil and wheat effects within each ENV x Facet network.
 if (RUN_ROTATION_MODELS) {
@@ -391,7 +390,7 @@ if (RUN_LEGACY_WRAPPERS) {
       prev_gen_col = "Previous_Crop_Genotype",
       curr_gen_col = "Wheat",
       spatial_cols = c("Row", "Col"),
-      rep_col = "Rep_combo"
+      rep_col = "Rep_gen"
     )
   })
   show_plot(legacy_spats_wrapper$plot, "legacy_spats_wrapper_yadj")
@@ -405,7 +404,7 @@ if (RUN_LEGACY_WRAPPERS) {
       prev_gen_col = "Previous_Crop_Genotype",
       curr_gen_col = "Wheat",
       spatial_cols = c("Row", "Col"),
-      rep_col = "Rep_combo"
+      rep_col = "Rep_gen"
     )
   })
   show_plot(legacy_spats2_wrapper$plot, "legacy_spats2_wrapper_yadj")
@@ -423,7 +422,7 @@ if (RUN_FACET_MODEL) {
       prev_gen_col = "Lentil",
       curr_gen_col = "Wheat",
       spatial_cols = c("Row", "Col"),
-      rep_col = "Rep_combo"
+      rep_col = "Rep_gen"
     )
   })
   show_plot(legacy_facet$plot, "legacy_facet_yadj")
