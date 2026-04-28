@@ -22,8 +22,8 @@ model_legacy_facet <- function(data, trait, env_col,
 
   for (env in envs) {
     # 1. Isolate Data for this Environment
-    env_data <- data |> dplyr::filter(ENV %in% env)
-    env_data <- na.omit(env_data)
+    env_data <- data |>
+      dplyr::filter(.data[[env_col]] %in% env, !is.na(.data[[trait]]))
 
     if(nrow(env_data) == 0) next
 
@@ -51,7 +51,10 @@ model_legacy_facet <- function(data, trait, env_col,
 
     # Define Fixed Formula
     fixed_form <- "~ 1"
-    if (!is.null(rep_col)) fixed_form <- paste("~", rep_col)
+    if (!is.null(rep_col) && rep_col %in% names(env_data)) {
+      env_data[[rep_col]] <- as.factor(env_data[[rep_col]])
+      fixed_form <- paste("~", rep_col)
+    }
 
     # Fit SpATS to get the pure Wheat BLUPs (ignoring Lentil effect for the baseline)
     m_wheat <- SpATS::SpATS(
