@@ -128,11 +128,16 @@ model_predecessor_effect <- function(data,
   final_df <- dplyr::bind_rows(results_list)
 
   p <- .lr_plot_predecessor(final_df, trait)
+  ranked_p <- .lr_plot_predecessor_ranked(final_df, trait)
   correction_p <- .lr_plot_predecessor_correction(final_df, trait)
+  gwas_df <- extract_predecessor_gwas_phenotypes(final_df)
 
   list(
     legacy_values = final_df,
+    gwas_phenotypes = gwas_df,
     plot = p,
+    ranked_plot = ranked_p,
+    gwas_plot = ranked_p,
     correction_plot = correction_p,
     models = model_list,
     settings = list(
@@ -143,6 +148,87 @@ model_predecessor_effect <- function(data,
       question = "Which lentil genotypes leave better average wheat conditions?"
     )
   )
+}
+
+#' Extract GWAS-Ready Lentil Predecessor Phenotypes
+#'
+#' Converts predecessor-effect model output into one phenotype per previous
+#' lentil genotype, environment, and trait. The default phenotype is
+#' `Legacy_Value`, which is the model-corrected deviation from the relevant
+#' ENV x Facet baseline.
+#'
+#' @param x A result from `model_predecessor_effect()` or a legacy-value data frame.
+#' @param phenotype_col Column to use as the GWAS phenotype.
+#'
+#' @return A data frame with one row per genotype x environment x trait.
+#' @export
+extract_predecessor_gwas_phenotypes <- function(x, phenotype_col = "Legacy_Value") {
+  df <- .lr_get_legacy_df(x)
+  if (nrow(df) == 0) return(df)
+
+  .lr_check_columns(df, c("Previous_Genotype", "Environment", phenotype_col))
+
+  if (!"Trait" %in% names(df)) df$Trait <- NA_character_
+  if (!"N_Plots" %in% names(df)) df$N_Plots <- 1L
+  if (!"N_Wheat_Partners" %in% names(df)) df$N_Wheat_Partners <- NA_integer_
+  if (!"Baseline_Group" %in% names(df)) df$Baseline_Group <- "All"
+  if (!"Corrected_Mean" %in% names(df)) df$Corrected_Mean <- NA_real_
+  if (!"Baseline_Mean" %in% names(df)) df$Baseline_Mean <- NA_real_
+  if (!"Legacy_Value_Global" %in% names(df)) df$Legacy_Value_Global <- NA_real_
+  if (!"SE" %in% names(df)) df$SE <- NA_real_
+  if (!"Method" %in% names(df)) df$Method <- NA_character_
+
+  out <- df |>
+    dplyr::group_by(
+      Genotype = .data[["Previous_Genotype"]],
+      Environment = .data[["Environment"]],
+      Trait = .data[["Trait"]]
+    ) |>
+    dplyr::summarize(
+      Predecessor_Phenotype = .lr_weighted_mean(.data[[phenotype_col]], .data[["N_Plots"]]),
+      Corrected_Mean = .lr_weighted_mean(.data[["Corrected_Mean"]], .data[["N_Plots"]]),
+      Facet_Baseline_Mean = .lr_weighted_mean(.data[["Baseline_Mean"]], .data[["N_Plots"]]),
+      Global_Legacy_Value = .lr_weighted_mean(.data[["Legacy_Value_Global"]], .data[["N_Plots"]]),
+      SE = .lr_weighted_mean(.data[["SE"]], .data[["N_Plots"]]),
+      N_Plots = sum(.data[["N_Plots"]], na.rm = TRUE),
+      N_Wheat_Partners = sum(unique(.data[["N_Wheat_Partners"]]), na.rm = TRUE),
+      Baseline_Group = paste(unique(as.character(.data[["Baseline_Group"]])), collapse = ";"),
+      N_Baseline_Groups = dplyr::n_distinct(.data[["Baseline_Group"]]),
+      Method = paste(unique(as.character(.data[["Method"]])), collapse = ";"),
+      Phenotype_Column = phenotype_col,
+      Phenotype_Interpretation = "Model-corrected wheat response deviation from the ENV x Facet baseline; positive values indicate better wheat performance after that lentil genotype.",
+      .groups = "drop"
+    ) |>
+    dplyr::group_by(.data[["Environment"]], .data[["Trait"]]) |>
+    dplyr::mutate(
+      Rank = rank(-.data[["Predecessor_Phenotype"]], ties.method = "first")
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::arrange(.data[["Environment"]], .data[["Trait"]], .data[["Rank"]])
+
+  out
+}
+
+#' Plot GWAS-Ready Lentil Predecessor Phenotypes
+#'
+#' Shows a single ranked list of lentil genotypes per environment using the
+#' facet-corrected predecessor phenotype. Bars are colored by the wheat-partner
+#' facet to preserve design context without splitting the ranking into panels.
+#'
+#' @param x A result from `model_predecessor_effect()` or a legacy-value data frame.
+#' @param trait Optional trait label for the plot subtitle.
+#' @param n Optional number of top and bottom genotypes to show per environment.
+#'
+#' @return A ggplot object.
+#' @export
+plot_predecessor_gwas_phenotypes <- function(x, trait = NULL, n = NULL) {
+  df <- .lr_get_legacy_df(x)
+  if (nrow(df) == 0) return(NULL)
+  df <- .lr_as_legacy_plot_df(df)
+  if (is.null(trait) && "Trait" %in% names(df)) {
+    trait <- paste(unique(as.character(df$Trait)), collapse = ", ")
+  }
+  .lr_plot_predecessor_ranked(df, trait = trait, n = n)
 }
 
 #' Model Lentil-Wheat Pair Compatibility
@@ -321,6 +407,34 @@ model_pair_compatibility <- function(data,
     stop(paste("Missing required columns:", paste(missing, collapse = ", ")))
   }
   invisible(TRUE)
+}
+
+.lr_get_legacy_df <- function(x) {
+  if (is.data.frame(x)) return(x)
+  if (is.list(x) && "legacy_values" %in% names(x)) return(x$legacy_values)
+  stop("Expected a legacy-value data frame or a result from model_predecessor_effect().")
+}
+
+.lr_as_legacy_plot_df <- function(df) {
+  out <- df
+  if (!"Previous_Genotype" %in% names(out) && "Genotype" %in% names(out)) {
+    out$Previous_Genotype <- out$Genotype
+  }
+  if (!"Legacy_Value" %in% names(out) && "Predecessor_Phenotype" %in% names(out)) {
+    out$Legacy_Value <- out$Predecessor_Phenotype
+  }
+  if (!"SE" %in% names(out)) out$SE <- NA_real_
+  if (!"Baseline_Group" %in% names(out)) out$Baseline_Group <- "All"
+  out
+}
+
+.lr_weighted_mean <- function(x, w) {
+  ok <- !is.na(x)
+  if (!any(ok)) return(NA_real_)
+  w <- w[ok]
+  x <- x[ok]
+  if (all(is.na(w)) || sum(w, na.rm = TRUE) <= 0) return(mean(x, na.rm = TRUE))
+  stats::weighted.mean(x, w = w, na.rm = TRUE)
 }
 
 .lr_existing_cols <- function(data, cols) {
@@ -567,6 +681,50 @@ model_pair_compatibility <- function(data,
       subtitle = paste("Wheat trait:", trait, "| deviation from ENV x wheat-facet mean"),
       x = "Previous lentil genotype",
       y = "Effect on wheat performance vs facet mean"
+    )
+}
+
+.lr_plot_predecessor_ranked <- function(df, trait, n = NULL) {
+  if (nrow(df) == 0) return(NULL)
+  df <- .lr_as_legacy_plot_df(df)
+  .lr_check_columns(df, c("Previous_Genotype", "Environment", "Legacy_Value"))
+
+  plot_df <- df
+
+  if (!is.null(n) && is.finite(n)) {
+    plot_df <- plot_df |>
+      dplyr::group_by(.data[["Environment"]]) |>
+      dplyr::arrange(abs(.data[["Legacy_Value"]]), .by_group = TRUE) |>
+      dplyr::slice_tail(n = n) |>
+      dplyr::ungroup()
+  }
+
+  plot_df <- plot_df |>
+    dplyr::arrange(.data[["Environment"]], .data[["Legacy_Value"]]) |>
+    dplyr::mutate(
+      .Plot_Key = paste(.data[["Environment"]], .data[["Previous_Genotype"]], sep = "___"),
+      .Plot_Key = factor(.data[[".Plot_Key"]], levels = unique(.data[[".Plot_Key"]]))
+    )
+
+  ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[".Plot_Key"]], y = .data[["Legacy_Value"]])) +
+    ggplot2::geom_col(ggplot2::aes(fill = .data[["Baseline_Group"]]), alpha = 0.88) +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = .data[["Legacy_Value"]] - .data[["SE"]], ymax = .data[["Legacy_Value"]] + .data[["SE"]]),
+      width = 0.2,
+      color = "gray40",
+      na.rm = TRUE
+    ) +
+    ggplot2::coord_flip() +
+    ggplot2::facet_wrap(~Environment, scales = "free_y") +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
+    ggplot2::scale_x_discrete(labels = function(x) sub("^.*___", "", x)) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(
+      title = "GWAS-Ready Lentil Predecessor Phenotypes",
+      subtitle = paste("Facet-corrected wheat response phenotype", if (!is.null(trait)) paste("| trait:", trait) else ""),
+      x = "Previous lentil genotype",
+      y = "Facet-corrected predecessor phenotype",
+      fill = "Wheat-partner facet"
     )
 }
 

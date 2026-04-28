@@ -35,7 +35,10 @@ model_legacy_spats <- function(data, trait, env_col,
 
   list(
     legacy_values = res$legacy_values,
+    gwas_phenotypes = res$gwas_phenotypes,
     plot = res$plot,
+    ranked_plot = res$ranked_plot,
+    gwas_plot = res$gwas_plot,
     correction_plot = res$correction_plot,
     models = res$models
   )
@@ -73,7 +76,10 @@ model_legacy_spats2 <- function(data, trait, env_col,
 
   list(
     legacy_values = res$legacy_values,
+    gwas_phenotypes = res$gwas_phenotypes,
     plot = res$correction_plot,
+    ranked_plot = res$ranked_plot,
+    gwas_plot = res$gwas_plot,
     correction_plot = res$correction_plot,
     models = res$models
   )

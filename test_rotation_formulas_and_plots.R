@@ -279,6 +279,8 @@ if (RUN_ROTATION_MODELS) {
   })
 
   print(head(avg_predecessor_yadj$legacy_values, 20))
+  print(head(avg_predecessor_yadj$gwas_phenotypes, 20))
+  show_plot(avg_predecessor_yadj$ranked_plot, "avg_predecessor_yadj_gwas_ranked")
   show_plot(avg_predecessor_yadj$plot, "avg_predecessor_yadj_facet_baseline")
   show_plot(avg_predecessor_yadj$correction_plot, "avg_predecessor_yadj_raw_vs_corrected")
 
@@ -299,8 +301,28 @@ if (RUN_ROTATION_MODELS) {
   })
 
   print(head(avg_predecessor_pro$legacy_values, 20))
+  print(head(avg_predecessor_pro$gwas_phenotypes, 20))
+  show_plot(avg_predecessor_pro$ranked_plot, "avg_predecessor_pro_gwas_ranked")
   show_plot(avg_predecessor_pro$plot, "avg_predecessor_pro_facet_baseline")
   show_plot(avg_predecessor_pro$correction_plot, "avg_predecessor_pro_raw_vs_corrected")
+}
+
+
+# title: Export the GWAS-ready predecessor phenotypes.
+# This creates one facet-corrected lentil predecessor value per genotype, environment, and trait, which can be used as a Year-2 legacy phenotype for lentil GWAS.
+if (RUN_ROTATION_MODELS) {
+  predecessor_gwas_phenotypes <- safe_run("extract_predecessor_gwas_phenotypes: Y.ADJ and PRO", {
+    dplyr::bind_rows(
+      avg_predecessor_yadj$gwas_phenotypes,
+      avg_predecessor_pro$gwas_phenotypes
+    )
+  })
+
+  print(head(predecessor_gwas_phenotypes, 20))
+  show_plot(
+    plot_predecessor_gwas_phenotypes(avg_predecessor_yadj, trait = "Y.ADJ"),
+    "avg_predecessor_yadj_gwas_ranked_helper"
+  )
 }
 
 
@@ -404,12 +426,12 @@ legacy_correlation_input <- safe_run("Build correlation input: lentil BLUPs plus
     dplyr::filter(grepl("2024$", Environment)) |>
     dplyr::mutate(Environment = sub("2024$", "2025", Environment))
 
-  wheat_legacy_for_rotation <- avg_predecessor_yadj$legacy_values |>
+  wheat_legacy_for_rotation <- avg_predecessor_yadj$gwas_phenotypes |>
     dplyr::transmute(
-      Genotype = as.character(Previous_Genotype),
+      Genotype = as.character(Genotype),
       Environment = as.character(Environment),
       Trait = "Wheat_Legacy_YADJ",
-      Predicted = Legacy_Value
+      Predicted = Predecessor_Phenotype
     )
 
   dplyr::bind_rows(lentil_blups_for_rotation, wheat_legacy_for_rotation)
@@ -433,6 +455,7 @@ formula_test_results <- list(
   wheat_lme4_models = wheat_lme4_models,
   avg_predecessor_yadj = if (exists("avg_predecessor_yadj")) avg_predecessor_yadj else NULL,
   avg_predecessor_pro = if (exists("avg_predecessor_pro")) avg_predecessor_pro else NULL,
+  predecessor_gwas_phenotypes = if (exists("predecessor_gwas_phenotypes")) predecessor_gwas_phenotypes else NULL,
   pair_compatibility_yadj = if (exists("pair_compatibility_yadj")) pair_compatibility_yadj else NULL,
   pair_compatibility_pro = if (exists("pair_compatibility_pro")) pair_compatibility_pro else NULL,
   legacy_correlation_input = legacy_correlation_input

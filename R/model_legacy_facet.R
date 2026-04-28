@@ -125,7 +125,7 @@ model_legacy_facet <- function(data, trait, env_col,
   final_df <- dplyr::bind_rows(results_list)
 
   # 4. Plotting (Deviation Plot)
-  p <- ggplot2::ggplot(final_df, ggplot2::aes(x = reorder(Previous_Crop_Genotype, Legacy_Value), y = Legacy_Value)) +
+  p <- ggplot2::ggplot(final_df, ggplot2::aes(x = reorder(.data[[prev_gen_col]], Legacy_Value), y = Legacy_Value)) +
     ggplot2::geom_col(ggplot2::aes(fill = Legacy_Value > 0)) +
     ggplot2::coord_flip() +
     ggplot2::facet_wrap(~Environment, scales = "free_x") +
