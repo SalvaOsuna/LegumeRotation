@@ -218,17 +218,18 @@ extract_predecessor_gwas_phenotypes <- function(x, phenotype_col = "Legacy_Value
 #' @param x A result from `model_predecessor_effect()` or a legacy-value data frame.
 #' @param trait Optional trait label for the plot subtitle.
 #' @param n Optional number of top and bottom genotypes to show per environment.
+#' @param show_se Logical. Draw model prediction standard errors?
 #'
 #' @return A ggplot object.
 #' @export
-plot_predecessor_gwas_phenotypes <- function(x, trait = NULL, n = NULL) {
+plot_predecessor_gwas_phenotypes <- function(x, trait = NULL, n = NULL, show_se = FALSE) {
   df <- .lr_get_legacy_df(x)
   if (nrow(df) == 0) return(NULL)
   df <- .lr_as_legacy_plot_df(df)
   if (is.null(trait) && "Trait" %in% names(df)) {
     trait <- paste(unique(as.character(df$Trait)), collapse = ", ")
   }
-  .lr_plot_predecessor_ranked(df, trait = trait, n = n)
+  .lr_plot_predecessor_ranked(df, trait = trait, n = n, show_se = show_se)
 }
 
 #' Model Lentil-Wheat Pair Compatibility
@@ -655,7 +656,7 @@ model_pair_compatibility <- function(data,
   list(compatibility = compatibility, model = m)
 }
 
-.lr_plot_predecessor <- function(df, trait) {
+.lr_plot_predecessor <- function(df, trait, show_se = FALSE) {
   if (nrow(df) == 0) return(NULL)
   facet_formula <- if ("Baseline_Group" %in% names(df)) {
     Baseline_Group ~ Environment
@@ -663,18 +664,36 @@ model_pair_compatibility <- function(data,
     ~Environment
   }
 
-  ggplot2::ggplot(df, ggplot2::aes(x = reorder(Previous_Genotype, Legacy_Value), y = Legacy_Value)) +
-    ggplot2::geom_col(ggplot2::aes(fill = Legacy_Value > 0), alpha = 0.85) +
-    ggplot2::geom_errorbar(
-      ggplot2::aes(ymin = Legacy_Value - SE, ymax = Legacy_Value + SE),
-      width = 0.2,
-      color = "gray40",
-      na.rm = TRUE
+  plot_df <- df |>
+    dplyr::mutate(.Plot_Genotype = stats::reorder(.data[["Previous_Genotype"]], .data[["Legacy_Value"]]))
+
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[".Plot_Genotype"]], y = .data[["Legacy_Value"]])) +
+    ggplot2::geom_segment(
+      ggplot2::aes(xend = .data[[".Plot_Genotype"]], y = 0, yend = .data[["Legacy_Value"]]),
+      color = "gray72",
+      linewidth = 0.4
     ) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = .data[["Legacy_Value"]] > 0),
+      size = 2.2,
+      alpha = 0.9
+    )
+
+  if (show_se && "SE" %in% names(plot_df)) {
+    p <- p + ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = .data[["Legacy_Value"]] - .data[["SE"]], ymax = .data[["Legacy_Value"]] + .data[["SE"]]),
+      width = 0.16,
+      color = "gray40",
+      alpha = 0.55,
+      na.rm = TRUE
+    )
+  }
+
+  p +
     ggplot2::coord_flip() +
     ggplot2::facet_grid(facet_formula, scales = "free_y", space = "free_y") +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
-    ggplot2::scale_fill_manual(values = c("TRUE" = "forestgreen", "FALSE" = "firebrick"), guide = "none") +
+    ggplot2::scale_color_manual(values = c("TRUE" = "forestgreen", "FALSE" = "firebrick"), guide = "none") +
     ggplot2::theme_minimal() +
     ggplot2::labs(
       title = "Average Lentil Predecessor Effects",
@@ -684,7 +703,7 @@ model_pair_compatibility <- function(data,
     )
 }
 
-.lr_plot_predecessor_ranked <- function(df, trait, n = NULL) {
+.lr_plot_predecessor_ranked <- function(df, trait, n = NULL, show_se = FALSE) {
   if (nrow(df) == 0) return(NULL)
   df <- .lr_as_legacy_plot_df(df)
   .lr_check_columns(df, c("Previous_Genotype", "Environment", "Legacy_Value"))
@@ -706,14 +725,29 @@ model_pair_compatibility <- function(data,
       .Plot_Key = factor(.data[[".Plot_Key"]], levels = unique(.data[[".Plot_Key"]]))
     )
 
-  ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[".Plot_Key"]], y = .data[["Legacy_Value"]])) +
-    ggplot2::geom_col(ggplot2::aes(fill = .data[["Baseline_Group"]]), alpha = 0.88) +
-    ggplot2::geom_errorbar(
-      ggplot2::aes(ymin = .data[["Legacy_Value"]] - .data[["SE"]], ymax = .data[["Legacy_Value"]] + .data[["SE"]]),
-      width = 0.2,
-      color = "gray40",
-      na.rm = TRUE
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[".Plot_Key"]], y = .data[["Legacy_Value"]])) +
+    ggplot2::geom_segment(
+      ggplot2::aes(xend = .data[[".Plot_Key"]], y = 0, yend = .data[["Legacy_Value"]]),
+      color = "gray72",
+      linewidth = 0.4
     ) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = .data[["Baseline_Group"]]),
+      size = 2.2,
+      alpha = 0.9
+    )
+
+  if (show_se && "SE" %in% names(plot_df)) {
+    p <- p + ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = .data[["Legacy_Value"]] - .data[["SE"]], ymax = .data[["Legacy_Value"]] + .data[["SE"]]),
+      width = 0.16,
+      color = "gray40",
+      alpha = 0.55,
+      na.rm = TRUE
+    )
+  }
+
+  p +
     ggplot2::coord_flip() +
     ggplot2::facet_wrap(~Environment, scales = "free_y") +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
@@ -724,7 +758,7 @@ model_pair_compatibility <- function(data,
       subtitle = paste("Facet-corrected wheat response phenotype", if (!is.null(trait)) paste("| trait:", trait) else ""),
       x = "Previous lentil genotype",
       y = "Facet-corrected predecessor phenotype",
-      fill = "Wheat-partner facet"
+      color = "Wheat-partner facet"
     )
 }
 

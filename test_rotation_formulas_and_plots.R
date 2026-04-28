@@ -75,8 +75,19 @@ lentil_pheno <- read.csv(
   na.strings = c("", "NA")
 )
 
+lentil_subsample <- read.delim(
+  file.path("data-raw", "ACTIVATE_lentil_subsample.txt"),
+  na.strings = c("", "NA")
+)
+
 wheat_traits <- c("HD", "HT", "MAT", "LD", "YLD", "Y.ADJ", "TWT", "KWT", "PRO")
 lentil_traits <- c("DTE", "DTF", "VegP", "DTM", "RepP", "lodging", "YLD", "PRT", "DS")
+lentil_subsample_traits <- c(
+  "biomass.g", "straw.g", "seed.g", "n.seeds", "KSW", "HI", "NIR.seed.pre",
+  "LECO.stover.C.pct", "LECO.stover.N.pct", "LECO.stover.P.pct", "LECO.stover.N.g.m",
+  "LECO.seed.C.pct", "LECO.seed.N.pct", "LECO.seed.P.pct", "LECO.seed.N.g.m",
+  "NHI.pct", "NHI.rel", "C.N.ratio.stover", "C.N.ratio.seed"
+)
 
 wheat_treatment <- wheat_pheno |>
   dplyr::filter(Type == "Treatment") |>
@@ -419,31 +430,87 @@ if (RUN_FACET_MODEL) {
 }
 
 
-# title: Test the legacy-correlation heatmap.
-# This combines Year-1 lentil BLUPs with Year-2 wheat legacy values to explore which lentil traits track the rotation benefit.
-legacy_correlation_input <- safe_run("Build correlation input: lentil BLUPs plus wheat legacy", {
-  lentil_blups_for_rotation <- lentil_lme4_models$blups |>
-    dplyr::filter(grepl("2024$", Environment)) |>
-    dplyr::mutate(Environment = sub("2024$", "2025", Environment))
+# title: Build modular legacy-correlation input.
+# This combines full-trial lentil BLUPs, lentil subsample chemistry/biomass traits, and multiple wheat legacy targets so you can ask which Year-1 traits drive each Year-2 legacy phenotype.
+legacy_correlation_input <- safe_run("Build correlation input: lentil predictors plus wheat legacy targets", {
+  lentil_full_trial_predictors <- prepare_lentil_blup_predictors(
+    blups = lentil_lme4_models$blups,
+    from_year = "2024",
+    to_year = "2025",
+    trait_prefix = "FullTrial_"
+  )
 
-  wheat_legacy_for_rotation <- avg_predecessor_yadj$gwas_phenotypes |>
-    dplyr::transmute(
-      Genotype = as.character(Genotype),
-      Environment = as.character(Environment),
-      Trait = "Wheat_Legacy_YADJ",
-      Predicted = Predecessor_Phenotype
-    )
+  lentil_subsample_predictors <- prepare_lentil_subsample_predictors(
+    data = lentil_subsample,
+    trait_cols = lentil_subsample_traits,
+    env_col = "ENV",
+    gen_col = "Lentil",
+    type_col = "Type",
+    check_values = "Check",
+    include_checks = FALSE,
+    from_year = "2024",
+    to_year = "2025",
+    filter_from_year = TRUE,
+    trait_prefix = "Subsample_"
+  )
 
-  dplyr::bind_rows(lentil_blups_for_rotation, wheat_legacy_for_rotation)
+  wheat_legacy_targets <- prepare_wheat_legacy_targets(
+    YADJ = avg_predecessor_yadj,
+    PRO = avg_predecessor_pro
+  )
+
+  build_legacy_correlation_input(
+    predictors = list(lentil_full_trial_predictors, lentil_subsample_predictors),
+    targets = wheat_legacy_targets
+  )
 })
 
-legacy_correlation_plot <- safe_run("plot_legacy_correlations: lentil traits vs wheat legacy", {
+
+# title: Test the legacy-correlation heatmap for wheat yield legacy.
+# This gives a broad trait-by-trait view of Year-1 lentil predictors and the Year-2 wheat yield legacy phenotype.
+legacy_correlation_plot_yadj <- safe_run("plot_legacy_correlations: drivers of Wheat_Legacy_YADJ", {
   plot_legacy_correlations(
     data = legacy_correlation_input,
     target_trait = "Wheat_Legacy_YADJ"
   )
 })
-show_plot(legacy_correlation_plot, "legacy_correlation_heatmap")
+show_plot(legacy_correlation_plot_yadj, "legacy_correlation_heatmap_yadj")
+
+
+# title: Test the legacy-correlation heatmap for wheat protein legacy.
+# This repeats the same modular correlation view for Wheat_Legacy_PRO so you can compare whether protein legacy has different lentil drivers.
+legacy_correlation_plot_pro <- safe_run("plot_legacy_correlations: drivers of Wheat_Legacy_PRO", {
+  plot_legacy_correlations(
+    data = legacy_correlation_input,
+    target_trait = "Wheat_Legacy_PRO"
+  )
+})
+show_plot(legacy_correlation_plot_pro, "legacy_correlation_heatmap_pro")
+
+
+# title: Rank candidate lentil drivers of wheat legacy.
+# This focused plot is easier than the full heatmap when many subsample traits are included; it reports correlations, R2, p-values, and FDR for the selected wheat legacy target.
+legacy_driver_pro <- safe_run("plot_legacy_driver_correlations: drivers of Wheat_Legacy_PRO", {
+  plot_legacy_driver_correlations(
+    data = legacy_correlation_input,
+    target_trait = "Wheat_Legacy_PRO",
+    top_n = 20,
+    min_pairs = 10
+  )
+})
+print(head(legacy_driver_pro$correlations, 20))
+show_plot(legacy_driver_pro$plot, "legacy_driver_correlations_pro")
+
+legacy_driver_yadj <- safe_run("plot_legacy_driver_correlations: drivers of Wheat_Legacy_YADJ", {
+  plot_legacy_driver_correlations(
+    data = legacy_correlation_input,
+    target_trait = "Wheat_Legacy_YADJ",
+    top_n = 20,
+    min_pairs = 10
+  )
+})
+print(head(legacy_driver_yadj$correlations, 20))
+show_plot(legacy_driver_yadj$plot, "legacy_driver_correlations_yadj")
 
 
 # title: Collect the most important output objects.
@@ -458,7 +525,9 @@ formula_test_results <- list(
   predecessor_gwas_phenotypes = if (exists("predecessor_gwas_phenotypes")) predecessor_gwas_phenotypes else NULL,
   pair_compatibility_yadj = if (exists("pair_compatibility_yadj")) pair_compatibility_yadj else NULL,
   pair_compatibility_pro = if (exists("pair_compatibility_pro")) pair_compatibility_pro else NULL,
-  legacy_correlation_input = legacy_correlation_input
+  legacy_correlation_input = legacy_correlation_input,
+  legacy_driver_pro = if (exists("legacy_driver_pro")) legacy_driver_pro else NULL,
+  legacy_driver_yadj = if (exists("legacy_driver_yadj")) legacy_driver_yadj else NULL
 )
 
 cat("\nFormula and plot testing script finished. Inspect formula_test_results for fitted objects.\n")

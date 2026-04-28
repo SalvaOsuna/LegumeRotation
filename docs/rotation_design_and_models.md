@@ -310,6 +310,14 @@ plot_predecessor_gwas_phenotypes(avg_predecessor_yadj)
 
 This plot puts all lentil genotypes into one ranked list per environment, while coloring bars by `Facet` to preserve the sparse-design context.
 
+The SpATS output includes prediction standard errors for the adjusted lentil predecessor means. These are kept in the output table as `SE`, but they are not drawn by default in the ranked plots because the legacy phenotype is a deviation from a facet baseline and the SE bars can visually overwhelm the ranking. To inspect them as a diagnostic:
+
+``` r
+plot_predecessor_gwas_phenotypes(avg_predecessor_yadj, show_se = TRUE)
+```
+
+Boxplots are better reserved for plot-level raw or residualized observations. The GWAS phenotype table has one adjusted value per lentil genotype x environment x trait, so a boxplot would imply a distribution that is not present in that output.
+
 ## Formula Layer 3: Lentil-Wheat Pair Compatibility
 
 The preferred function is:
@@ -426,6 +434,56 @@ plot_legacy_correlations()
 ```
 
 This creates a correlation heatmap across traits.
+
+The correlation input can now be built from modular pieces:
+
+``` r
+lentil_full_trial_predictors <- prepare_lentil_blup_predictors(
+  blups = lentil_lme4_models$blups,
+  trait_prefix = "FullTrial_"
+)
+
+lentil_subsample_predictors <- prepare_lentil_subsample_predictors(
+  data = lentil_subsample,
+  trait_cols = lentil_subsample_traits,
+  trait_prefix = "Subsample_"
+)
+
+wheat_legacy_targets <- prepare_wheat_legacy_targets(
+  YADJ = avg_predecessor_yadj,
+  PRO = avg_predecessor_pro
+)
+
+legacy_correlation_input <- build_legacy_correlation_input(
+  predictors = list(lentil_full_trial_predictors, lentil_subsample_predictors),
+  targets = wheat_legacy_targets
+)
+```
+
+This lets the same predictor table be reused for different wheat legacy targets:
+
+``` r
+plot_legacy_correlations(
+  data = legacy_correlation_input,
+  target_trait = "Wheat_Legacy_PRO"
+)
+```
+
+When many subsample traits are included, the focused driver plot is easier to read than the full heatmap:
+
+``` r
+legacy_driver_pro <- plot_legacy_driver_correlations(
+  data = legacy_correlation_input,
+  target_trait = "Wheat_Legacy_PRO",
+  top_n = 20,
+  min_pairs = 10
+)
+
+legacy_driver_pro$correlations
+legacy_driver_pro$plot
+```
+
+The driver table reports the environment-specific correlation, R2, p-value, FDR, and number of genotype pairs used for each lentil predictor trait.
 
 ### Insight
 
