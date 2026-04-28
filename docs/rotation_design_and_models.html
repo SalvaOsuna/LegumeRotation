@@ -352,6 +352,7 @@ display: none;
 </div>
 
 
+<hr />
 <div id="legume-rotation-experiment-design-modeling-challenges-and-analytical-targets" class="section level1">
 <h1>Legume Rotation Experiment: Design, Modeling Challenges, and
 Analytical Targets</h1>
@@ -608,6 +609,32 @@ Facet mean.</p>
 </ul>
 <p>This helps diagnose whether the model is correcting a lentil upward
 or downward because of its wheat partners and spatial position.</p>
+</div>
+<div id="gwas-ready-predecessor-phenotypes" class="section level3">
+<h3>GWAS-ready predecessor phenotypes</h3>
+<p>For lentil GWAS, the useful output is one value per lentil genotype,
+environment, and trait. <code>model_predecessor_effect()</code> now
+returns this table directly:</p>
+<pre class="r"><code>avg_predecessor_yadj$gwas_phenotypes</code></pre>
+<p>The key column is:</p>
+<pre class="text"><code>Predecessor_Phenotype</code></pre>
+<p>By default, this is the same biological quantity as
+<code>Legacy_Value</code>: the model-corrected wheat response after a
+lentil genotype, expressed as a deviation from the relevant ENV x Facet
+baseline.</p>
+<p>This phenotype can be interpreted as:</p>
+<pre class="text"><code>How much better or worse did wheat perform after this lentil genotype than expected for its wheat-partner facet?</code></pre>
+<p>Positive values indicate lentil genotypes associated with improved
+following-wheat performance. These values can be used as Year 2 legacy
+phenotypes for association with lentil genomic markers. The biological
+target is a lentil genomic signature associated with improving the next
+crop, rather than improving the lentil crop itself.</p>
+<p>The ranked GWAS-style plot is available as:</p>
+<pre class="r"><code>avg_predecessor_yadj$ranked_plot
+plot_predecessor_gwas_phenotypes(avg_predecessor_yadj)</code></pre>
+<p>This plot puts all lentil genotypes into one ranked list per
+environment, while coloring bars by <code>Facet</code> to preserve the
+sparse-design context.</p>
 </div>
 </div>
 <div id="formula-layer-3-lentil-wheat-pair-compatibility" class="section level2">

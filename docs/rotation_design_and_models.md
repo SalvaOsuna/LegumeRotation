@@ -1,3 +1,7 @@
+---
+---
+---
+
 # Legume Rotation Experiment: Design, Modeling Challenges, and Analytical Targets
 
 ## Purpose of the Package
@@ -460,3 +464,4 @@ These correlations are exploratory. They can identify hypotheses, but they do no
 -   Sparse pair compatibility results are conditional on the observed design.
 -   Singular fits can occur in pair models when variance components are small or a facet has too little information. This is expected in sparse networks and should be interpreted carefully.
 -   The testing script `test_rotation_formulas_and_plots.R` is the best place to validate formulas and plots before promoting analyses into package vignettes or manuscript-ready scripts.
+
