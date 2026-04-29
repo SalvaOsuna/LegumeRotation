@@ -353,14 +353,14 @@ display: none;
 
 
 <hr />
-<div id="legume-rotation-experiment-design-modeling-challenges-and-analytical-targets" class="section level1">
-<h1>Legume Rotation Experiment: Design, Modeling Challenges, and
-Analytical Targets</h1>
-<div id="purpose-of-the-package" class="section level2">
-<h2>Purpose of the Package</h2>
-<p><code>LegumeRotation</code> supports analysis of a two-year
-lentil-wheat rotation experiment. The package has two connected
-goals:</p>
+<div id="activate-lentil-wheat-rotation-experiment-design-modeling-challenges-and-analytical-targets" class="section level1">
+<h1>ACTIVATE Lentil-Wheat Rotation Experiment: Design, Modeling
+Challenges, and Analytical Targets</h1>
+<div id="objectives" class="section level2">
+<h2>Objectives</h2>
+<p><code>LegumeRotation</code> is an R package designed to supports
+analysis of a two-year lentil-wheat rotation experiment. The package has
+two connected goals:</p>
 <ol style="list-style-type: decimal">
 <li>Characterize phenotypic performance of lentil and wheat as
 independent field trials.</li>
@@ -388,13 +388,13 @@ additive genotype effects.</p>
 <div id="experimental-design" class="section level2">
 <h2>Experimental Design</h2>
 <p>The field layout contains 76 rows by 30 columns, for 2,280 plots per
-trial layout, organized into incomplete blocks. The experiment
+trial layout, organized into 48 incomplete blocks. The experiment
 includes:</p>
 <ul>
 <li>100 lentil genotypes in Year 1.</li>
 <li>100 wheat genotypes in Year 2.</li>
-<li>Approximately 20 observations per genotype per location for the
-full-trial phenotypic layers.</li>
+<li>20 observations per genotype per location for the full-trial
+phenotypic layers.</li>
 <li>A sparse lentil-wheat pairing network rather than a complete
 factorial design.</li>
 </ul>
@@ -402,8 +402,8 @@ factorial design.</li>
 <pre class="text"><code>100 lentil genotypes x 100 wheat genotypes = 10,000 genotype combinations</code></pre>
 <p>before replication and locations. That is not feasible in the
 available field space. Instead, the design uses a sparse or incomplete
-factorial structure. Each lentil genotype is paired with a subset of
-wheat genotypes, often around 10 wheat partners. For example:</p>
+factorial structure. Each lentil genotype is paired with a subset of 10
+wheat partners, following this sctructure:</p>
 <pre class="text"><code>L001 paired with W001-W010
 L002 paired with W011-W020
 ...
@@ -429,10 +429,11 @@ correlations.</p>
 <p>The subsample layer includes more detailed biomass and nutrient
 traits, such as:</p>
 <pre class="text"><code>biomass, straw, seed weight, NIR, LECO C/N/P, NHI, C:N ratios</code></pre>
-<p>This layer has a lower-density sampling structure, with treatment
-observations plus repeated check observations nested in blocks. It is
-analytically useful, but its design differs from the full phenotypic
-layer, so checks and block structure need careful handling.</p>
+<p>This layer has a lower-density sampling structure ([2 reps x genotype
++ checks] x site), with treatment observations plus repeated check
+observations nested in blocks. It is analytically useful, but its design
+differs from the full phenotypic layer, so checks and block structure
+need careful handling.</p>
 </div>
 <div id="wheat-full-trial" class="section level3">
 <h3>Wheat Full Trial</h3>
@@ -705,6 +706,51 @@ additive expectation.</li>
 pair effect means the observed pair performed better than expected for
 that specific lentil and wheat combination. It does not directly predict
 unobserved pairings.</p>
+<p>The default pair-compatibility plot is now a heatmap rather than a
+long bar plot. Each panel is one observed ENV x Facet network, the
+x-axis is the current wheat genotype, the y-axis is the previous lentil
+genotype, and the tile color is <code>Compatibility_Value</code>.</p>
+<pre class="r"><code>pair_compatibility_pro$heatmap
+pair_compatibility_pro$ranked_plot
+pair_compatibility_pro$diagnostics</code></pre>
+<p>The heatmap avoids saturating the y-axis with long lentil-wheat
+combination names. The ranked plot is still available for the strongest
+positive and negative pair effects, but it is intended as a summary
+view, not as the main map of the design.</p>
+<p>If a panel shows all pair effects as zero, that does not mean the
+underlying observations are missing. It means the mixed model estimated
+the <code>Combo</code> variance component as zero for that ENV x Facet.
+In that situation, the fitted model says that the additive lentil
+effect, additive wheat effect, spatial terms, and design random effects
+explain the available signal, and there is no detectable pair-specific
+deviation left for that facet. The pair BLUPs are therefore all shrunk
+to zero.</p>
+<p>By default, pair-compatibility plots now drop ENV x Facet groups with
+no detectable pair-specific signal. These groups remain in
+<code>pair_compatibility_pro$diagnostics</code>, but they are not shown
+in <code>heatmap</code> or <code>ranked_plot</code>. To include them for
+auditing:</p>
+<pre class="r"><code>plot_pair_compatibility_heatmap(pair_compatibility_pro, drop_no_signal = FALSE)
+plot_pair_compatibility_ranked(pair_compatibility_pro, drop_no_signal = FALSE)</code></pre>
+<p>The diagnostics table should be checked before interpreting pair
+effects. Useful columns include:</p>
+<ul>
+<li><code>N_Plots</code></li>
+<li><code>N_Previous_Genotypes</code></li>
+<li><code>N_Current_Genotypes</code></li>
+<li><code>N_Combos</code></li>
+<li><code>Min_Reps_Per_Combo</code></li>
+<li><code>N_Single_Rep_Combos</code></li>
+<li><code>Status</code></li>
+<li><code>Model_Singular</code></li>
+<li><code>Combo_Variance</code></li>
+<li><code>Residual_Variance</code></li>
+</ul>
+<p>For this design, a reliable ENV x Facet group should usually have 10
+lentils, 10 wheats, 100 observed combos, and at least two plots per
+combo. If a panel appears empty in an old bar plot, that is usually a
+visualization artifact from crossing all environment and facet labels.
+The new heatmap uses only observed ENV x Facet panels.</p>
 </div>
 </div>
 <div id="formula-layer-4-older-legacy-wrappers" class="section level2">

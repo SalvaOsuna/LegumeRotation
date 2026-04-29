@@ -49,7 +49,7 @@ The wheat file stores this grouping in the `Facet` column. A facet is a wheat-pa
 
 ## Data Layers
 
-The package is designed around three major data layers.
+The package is designed around four major data layers.
 
 ### Lentil Full Trial
 
@@ -70,6 +70,18 @@ biomass, straw, seed weight, NIR, LECO C/N/P, NHI, C:N ratios
 ```
 
 This layer has a lower-density sampling structure ([2 reps x genotype + checks] x site), with treatment observations plus repeated check observations nested in blocks. It is analytically useful, but its design differs from the full phenotypic layer, so checks and block structure need careful handling.
+
+### Lentil Microbiome Layer
+
+The microbiome layer comes from the Year 1 lentil plots and includes plot-level 16S-derived predictors such as:
+
+``` text
+Observed ASV richness, Chao1, ACE, Shannon, Simpson, Pielou evenness,
+Aitchison PCoA axes, microbiome legacy score, Rhizobiaceae abundance,
+Bradyrhizobiaceae abundance, legume-symbiont abundance
+```
+
+For the legacy-driver analysis, these plot-level microbiome traits are aggregated to lentil genotype x environment means, then the environment labels are shifted from 2024 to the matching 2025 wheat environment. This lets the microbiome layer be treated as another Year 1 predictor of Year 2 wheat legacy.
 
 ### Wheat Full Trial
 
@@ -380,6 +392,40 @@ Which observed lentil-wheat pairs are unusually good or bad after accounting for
 
 Interpretation should stay inside the observed network. A positive pair effect means the observed pair performed better than expected for that specific lentil and wheat combination. It does not directly predict unobserved pairings.
 
+The default pair-compatibility plot is now a heatmap rather than a long bar plot. Each panel is one observed ENV x Facet network, the x-axis is the current wheat genotype, the y-axis is the previous lentil genotype, and the tile color is `Compatibility_Value`.
+
+``` r
+pair_compatibility_pro$heatmap
+pair_compatibility_pro$ranked_plot
+pair_compatibility_pro$diagnostics
+```
+
+The heatmap avoids saturating the y-axis with long lentil-wheat combination names. The ranked plot is still available for the strongest positive and negative pair effects, but it is intended as a summary view, not as the main map of the design.
+
+If a panel shows all pair effects as zero, that does not mean the underlying observations are missing. It means the mixed model estimated the `Combo` variance component as zero for that ENV x Facet. In that situation, the fitted model says that the additive lentil effect, additive wheat effect, spatial terms, and design random effects explain the available signal, and there is no detectable pair-specific deviation left for that facet. The pair BLUPs are therefore all shrunk to zero.
+
+By default, pair-compatibility plots now drop ENV x Facet groups with no detectable pair-specific signal. These groups remain in `pair_compatibility_pro$diagnostics`, but they are not shown in `heatmap` or `ranked_plot`. To include them for auditing:
+
+``` r
+plot_pair_compatibility_heatmap(pair_compatibility_pro, drop_no_signal = FALSE)
+plot_pair_compatibility_ranked(pair_compatibility_pro, drop_no_signal = FALSE)
+```
+
+The diagnostics table should be checked before interpreting pair effects. Useful columns include:
+
+-   `N_Plots`
+-   `N_Previous_Genotypes`
+-   `N_Current_Genotypes`
+-   `N_Combos`
+-   `Min_Reps_Per_Combo`
+-   `N_Single_Rep_Combos`
+-   `Status`
+-   `Model_Singular`
+-   `Combo_Variance`
+-   `Residual_Variance`
+
+For this design, a reliable ENV x Facet group should usually have 10 lentils, 10 wheats, 100 observed combos, and at least two plots per combo. If a panel appears empty in an old bar plot, that is usually a visualization artifact from crossing all environment and facet labels. The new heatmap uses only observed ENV x Facet panels.
+
 ## Formula Layer 4: Older Legacy Wrappers
 
 The older functions:
@@ -449,13 +495,23 @@ lentil_subsample_predictors <- prepare_lentil_subsample_predictors(
   trait_prefix = "Subsample_"
 )
 
+lentil_microbiome_predictors <- prepare_lentil_microbiome_predictors(
+  data = lentil_microbiome,
+  trait_cols = lentil_microbiome_traits,
+  trait_prefix = "Microbiome_"
+)
+
 wheat_legacy_targets <- prepare_wheat_legacy_targets(
   YADJ = avg_predecessor_yadj,
   PRO = avg_predecessor_pro
 )
 
 legacy_correlation_input <- build_legacy_correlation_input(
-  predictors = list(lentil_full_trial_predictors, lentil_subsample_predictors),
+  predictors = list(
+    lentil_full_trial_predictors,
+    lentil_subsample_predictors,
+    lentil_microbiome_predictors
+  ),
   targets = wheat_legacy_targets
 )
 ```
@@ -498,6 +554,7 @@ Examples of possible biological interpretations include:
 -   Lentil yield or biomass could correlate with wheat legacy if residue quantity matters.
 -   Lentil maturity or phenology could correlate with wheat legacy if timing affects soil water or residue decomposition.
 -   Lentil protein or nutrient traits could correlate with wheat legacy if nitrogen or nutrient cycling contributes to the effect.
+-   Microbiome diversity, ordination axes, or symbiont-associated abundance could correlate with wheat legacy if microbial community structure contributes to residue decomposition, nutrient cycling, or soil biological carryover.
 
 These correlations are exploratory. They can identify hypotheses, but they do not prove mechanism without follow-up modeling or experimental validation.
 

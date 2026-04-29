@@ -127,6 +127,120 @@ prepare_lentil_subsample_predictors <- function(data,
     )
 }
 
+#' Prepare Lentil Microbiome Predictors for Legacy Correlations
+#'
+#' Aggregates plot-level Year-1 microbiome traits to one value per lentil
+#' genotype and environment, then shifts the environment labels to the Year-2
+#' wheat environments so these predictors can be correlated with wheat legacy
+#' phenotypes.
+#'
+#' @param data Microbiome data frame.
+#' @param trait_cols Numeric microbiome trait columns. If `NULL`, a curated set
+#'   of alpha-diversity, ordination, and symbiont-abundance traits is used when
+#'   present; otherwise numeric non-design columns are used.
+#' @param env_col Environment column.
+#' @param gen_col Lentil genotype column.
+#' @param type_col Optional type column used to exclude checks.
+#' @param check_values Values in `type_col` treated as checks.
+#' @param include_checks Logical. Include checks?
+#' @param from_year Year suffix for lentil microbiome observations.
+#' @param to_year Year suffix for following wheat observations.
+#' @param filter_from_year Logical. Keep only environments ending in `from_year`
+#'   before shifting to `to_year`.
+#' @param trait_prefix Prefix added to microbiome trait names.
+#' @param source_label Label stored in the Source column.
+#' @param drop_all_missing Logical. Drop traits with no observed values.
+#' @param drop_constant Logical. Drop traits with one observed value across all
+#'   retained samples.
+#'
+#' @return Long-format data frame with Genotype, Environment, Trait, Predicted.
+#' @export
+prepare_lentil_microbiome_predictors <- function(data,
+                                                 trait_cols = NULL,
+                                                 env_col = "ENV",
+                                                 gen_col = "Lentil",
+                                                 type_col = "Type",
+                                                 check_values = "Check",
+                                                 include_checks = FALSE,
+                                                 from_year = "2024",
+                                                 to_year = "2025",
+                                                 filter_from_year = TRUE,
+                                                 trait_prefix = "Microbiome_",
+                                                 source_label = "lentil_microbiome_mean",
+                                                 drop_all_missing = TRUE,
+                                                 drop_constant = TRUE) {
+  .lr_check_columns(data, c(env_col, gen_col))
+
+  out <- data
+  if (!include_checks && !is.null(type_col) && type_col %in% names(out)) {
+    out <- out[!(out[[type_col]] %in% check_values), ]
+  }
+  if (filter_from_year) {
+    out <- out[grepl(paste0(from_year, "$"), out[[env_col]]), ]
+  }
+  out <- out[!is.na(out[[gen_col]]) & grepl("^L[0-9]{3}$", out[[gen_col]]), ]
+
+  if (is.null(trait_cols)) {
+    curated_cols <- c(
+      "Observed", "Chao1", "ACE", "Shannon", "Simpson", "InvSimpson",
+      "Pielou_J", "Faith_PD", "Faith_SR", "Aitchison_PC1",
+      "Aitchison_PC2", "MicrobiomeLegacyScore",
+      "RhizobiaceaeRelAbundance", "BradyrhizobiaceaeRelAbundance",
+      "LegumeSymbiontRelAbundance"
+    )
+    trait_cols <- curated_cols[curated_cols %in% names(out)]
+
+    if (length(trait_cols) == 0) {
+      excluded_cols <- c(
+        env_col, gen_col, type_col,
+        "SampleID", "Sample", "Sample_raw", "primer", "plot", "Unique ID",
+        "Unique.ID", "SiteID", "Col", "Row", "Block", "BlockRow",
+        "BlockCol", "Rep", "Wheat", "Name", "Name_SNPset", "Name.SNPset",
+        "cot_color", "LibrarySizeRaw", "LibrarySizeFiltered",
+        "Aitchison_PC1_var", "Aitchison_PC2_var"
+      )
+      trait_cols <- names(out)[vapply(out, is.numeric, logical(1))]
+      trait_cols <- setdiff(trait_cols, excluded_cols)
+    }
+  }
+
+  trait_cols <- trait_cols[trait_cols %in% names(out)]
+  trait_cols <- trait_cols[vapply(out[trait_cols], is.numeric, logical(1))]
+
+  if (drop_all_missing) {
+    trait_cols <- trait_cols[vapply(out[trait_cols], function(x) any(!is.na(x)), logical(1))]
+  }
+  if (drop_constant) {
+    trait_cols <- trait_cols[vapply(out[trait_cols], function(x) {
+      length(unique(stats::na.omit(x))) > 1
+    }, logical(1))]
+  }
+  if (length(trait_cols) == 0) stop("No microbiome trait columns were found.")
+
+  out |>
+    dplyr::select(dplyr::all_of(c(env_col, gen_col, trait_cols))) |>
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(trait_cols),
+      names_to = "Trait",
+      values_to = "Predicted"
+    ) |>
+    dplyr::filter(!is.na(.data[["Predicted"]])) |>
+    dplyr::group_by(.data[[gen_col]], .data[[env_col]], .data[["Trait"]]) |>
+    dplyr::summarize(
+      Predicted = mean(.data[["Predicted"]], na.rm = TRUE),
+      N_Observations = dplyr::n(),
+      .groups = "drop"
+    ) |>
+    dplyr::transmute(
+      Genotype = as.character(.data[[gen_col]]),
+      Environment = shift_rotation_environment(.data[[env_col]], from_year = from_year, to_year = to_year),
+      Trait = paste0(trait_prefix, sub("^Microbiome", "", .data[["Trait"]])),
+      Predicted = .data[["Predicted"]],
+      Source = source_label,
+      N_Observations = .data[["N_Observations"]]
+    )
+}
+
 #' Prepare Wheat Legacy Targets for Correlation Analysis
 #'
 #' Converts one or more `model_predecessor_effect()` outputs into long-format

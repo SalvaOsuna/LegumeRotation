@@ -12,7 +12,7 @@ PLOT_DIR <- file.path("Figures", "formula_test_outputs")
 if (SAVE_PLOTS && !dir.exists(PLOT_DIR)) dir.create(PLOT_DIR, recursive = TRUE)
 
 required_packages <- c(
-  "dplyr", "tidyr", "ggplot2", "lme4", "SpATS", "reshape2", "ggrepel"
+  "dplyr", "tidyr", "ggplot2", "lme4", "SpATS", "reshape2", "ggrepel", "devtools"
 )
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages) > 0) {
@@ -80,14 +80,25 @@ lentil_subsample <- read.delim(
   na.strings = c("", "NA")
 )
 
+lentil_microbiome <- read.csv(
+  file.path("data-raw", "lentil_microbiome_layer_2024.csv"),
+  na.strings = c("", "NA")
+)
+
 wheat_traits <- c("HD", "HT", "MAT", "LD", "YLD", "Y.ADJ", "TWT", "KWT", "PRO")
 lentil_traits <- c("DTE", "DTF", "VegP", "DTM", "RepP", "lodging", "YLD", "PRT", "DS")
 lentil_subsample_traits <- c(
   "biomass.g", "straw.g", "seed.g", "n.seeds", "KSW", "HI",
-  "LECO.stover.C.pct", "LECO.stover.N.pct", "LECO.stover.N.g.m",
-  "LECO.seed.C.pct", "LECO.seed.N.pct",  "LECO.seed.N.g.m",
+  "LECO.stover.C.pct",  "LECO.stover.N.g.m",
+  "LECO.seed.C.pct",   "LECO.seed.N.g.m",
   "NHI.pct", "NHI.rel", "C.N.ratio.stover", "C.N.ratio.seed"
-) # traits not included: "NIR.seed.pre", "LECO.stover.P.pct","LECO.seed.P.pct",
+) # traits not included: "NIR.seed.pre", "LECO.stover.P.pct","LECO.seed.P.pct","LECO.stover.N.pct","LECO.seed.N.pct",
+lentil_microbiome_traits <- c(
+  "Observed", "Chao1", "ACE", "Shannon", "Simpson", "InvSimpson",
+  "Pielou_J", "Aitchison_PC1", "Aitchison_PC2", "MicrobiomeLegacyScore",
+  "RhizobiaceaeRelAbundance", "BradyrhizobiaceaeRelAbundance",
+  "LegumeSymbiontRelAbundance"
+)
 
 wheat_treatment <- wheat_pheno |>
   dplyr::filter(Type == "Treatment") |>
@@ -358,7 +369,9 @@ if (RUN_ROTATION_MODELS) {
   })
 
   print(head(pair_compatibility_yadj$compatibility, 20))
-  show_plot(pair_compatibility_yadj$plot, "pair_compatibility_yadj")
+  print(pair_compatibility_yadj$diagnostics)
+  show_plot(pair_compatibility_yadj$heatmap, "pair_compatibility_yadj_heatmap")
+  show_plot(pair_compatibility_yadj$ranked_plot, "pair_compatibility_yadj_ranked")
 
   pair_compatibility_pro <- safe_run("model_pair_compatibility lme4: PRO", {
     model_pair_compatibility(
@@ -377,7 +390,9 @@ if (RUN_ROTATION_MODELS) {
   })
 
   print(head(pair_compatibility_pro$compatibility, 20))
-  show_plot(pair_compatibility_pro$plot, "pair_compatibility_pro")
+  print(pair_compatibility_pro$diagnostics)
+  show_plot(pair_compatibility_pro$heatmap, "pair_compatibility_pro_heatmap")
+  show_plot(pair_compatibility_pro$ranked_plot, "pair_compatibility_pro_ranked")
 }
 
 
@@ -432,7 +447,7 @@ if (RUN_FACET_MODEL) {
 
 
 # title: Build modular legacy-correlation input.
-# This combines full-trial lentil BLUPs, lentil subsample chemistry/biomass traits, and multiple wheat legacy targets so you can ask which Year-1 traits drive each Year-2 legacy phenotype.
+# This combines full-trial lentil BLUPs, lentil subsample chemistry/biomass traits, microbiome traits, and multiple wheat legacy targets so you can ask which Year-1 traits drive each Year-2 legacy phenotype.
 legacy_correlation_input <- safe_run("Build correlation input: lentil predictors plus wheat legacy targets", {
   lentil_full_trial_predictors <- prepare_lentil_blup_predictors(
     blups = lentil_lme4_models$blups,
@@ -455,13 +470,28 @@ legacy_correlation_input <- safe_run("Build correlation input: lentil predictors
     trait_prefix = "Subsample_"
   )
 
+  lentil_microbiome_predictors <- prepare_lentil_microbiome_predictors(
+    data = lentil_microbiome,
+    trait_cols = lentil_microbiome_traits,
+    env_col = "ENV",
+    gen_col = "Lentil",
+    from_year = "2024",
+    to_year = "2025",
+    filter_from_year = TRUE,
+    trait_prefix = "Microbiome_"
+  )
+
   wheat_legacy_targets <- prepare_wheat_legacy_targets(
     YADJ = avg_predecessor_yadj,
     PRO = avg_predecessor_pro
   )
 
   build_legacy_correlation_input(
-    predictors = list(lentil_full_trial_predictors, lentil_subsample_predictors),
+    predictors = list(
+      lentil_full_trial_predictors,
+      lentil_subsample_predictors,
+      lentil_microbiome_predictors
+    ),
     targets = wheat_legacy_targets
   )
 })
@@ -527,6 +557,7 @@ formula_test_results <- list(
   pair_compatibility_yadj = if (exists("pair_compatibility_yadj")) pair_compatibility_yadj else NULL,
   pair_compatibility_pro = if (exists("pair_compatibility_pro")) pair_compatibility_pro else NULL,
   legacy_correlation_input = legacy_correlation_input,
+  lentil_microbiome_predictors = if (exists("lentil_microbiome_predictors")) lentil_microbiome_predictors else NULL,
   legacy_driver_pro = if (exists("legacy_driver_pro")) legacy_driver_pro else NULL,
   legacy_driver_yadj = if (exists("legacy_driver_yadj")) legacy_driver_yadj else NULL
 )

@@ -252,6 +252,8 @@ plot_predecessor_gwas_phenotypes <- function(x, trait = NULL, n = NULL, show_se 
 #' @param type_col Optional column used to remove checks.
 #' @param check_values Values in `type_col` to remove when `include_checks = FALSE`.
 #' @param include_checks Logical. Include check plots in the model?
+#' @param min_combo_reps Minimum observed plots per lentil-wheat pair to label a
+#'   pair as fully supported in the output.
 #'
 #' @return A list with pair compatibility values, plots, fitted models, and settings.
 #' @export
@@ -267,7 +269,8 @@ model_pair_compatibility <- function(data,
                                      random_effect_cols = c("Block"),
                                      type_col = "Type",
                                      check_values = "Check",
-                                     include_checks = FALSE) {
+                                     include_checks = FALSE,
+                                     min_combo_reps = 2) {
 
   if (!requireNamespace("lme4", quietly = TRUE)) {
     stop("Package 'lme4' is required for pair compatibility models.")
@@ -289,6 +292,7 @@ model_pair_compatibility <- function(data,
 
   results_list <- list()
   model_list <- list()
+  diagnostics_list <- list()
   envs <- unique(data[[env_col]])
 
   for (env in envs) {
@@ -300,9 +304,21 @@ model_pair_compatibility <- function(data,
     for (baseline_group in baseline_groups) {
       group_data <- droplevels(env_data[as.character(env_data$.Baseline_Group) == baseline_group, ])
       if (nrow(group_data) == 0) next
+      group_diag <- .lr_pair_group_diagnostics(
+        env_data = group_data,
+        trait = trait,
+        prev_gen_col = prev_gen_col,
+        curr_gen_col = curr_gen_col,
+        combo_col = combo_col
+      )
+      group_diag$Environment <- env
+      group_diag$Baseline_Group <- baseline_group
+
       if (dplyr::n_distinct(group_data[[prev_gen_col]]) < 2 ||
           dplyr::n_distinct(group_data[[curr_gen_col]]) < 2 ||
           dplyr::n_distinct(group_data[[combo_col]]) < 2) {
+        group_diag$Status <- "skipped_insufficient_genotype_levels"
+        diagnostics_list[[paste(env, baseline_group, "diagnostic", sep = "::")]] <- group_diag
         next
       }
 
@@ -328,29 +344,236 @@ model_pair_compatibility <- function(data,
       pair_df <- fit$compatibility
       pair_df$Environment <- env
       pair_df$Trait <- trait
+      pair_df$Pair_Support <- ifelse(pair_df$N_Plots >= min_combo_reps, "supported", "low_replication")
+      pair_df$Model_Singular <- fit$diagnostics$Model_Singular
+      pair_df$Combo_Variance <- fit$diagnostics$Combo_Variance
+      pair_df$Residual_Variance <- fit$diagnostics$Residual_Variance
       pair_df <- pair_df[order(pair_df$Compatibility_Value, decreasing = TRUE), ]
       pair_df$Rank <- seq_len(nrow(pair_df))
 
       result_key <- paste(env, baseline_group, sep = "::")
       results_list[[result_key]] <- pair_df
       model_list[[result_key]] <- fit$model
+      fit$diagnostics$Environment <- env
+      fit$diagnostics$Baseline_Group <- baseline_group
+      diagnostics_list[[paste(env, baseline_group, "diagnostic", sep = "::")]] <- fit$diagnostics
     }
   }
 
   final_df <- dplyr::bind_rows(results_list)
-  p <- .lr_plot_pair_compatibility(final_df, trait)
+  diagnostics_df <- dplyr::bind_rows(diagnostics_list)
+  p <- plot_pair_compatibility_heatmap(final_df, trait)
+  ranked_p <- plot_pair_compatibility_ranked(final_df, trait)
 
   list(
     compatibility = final_df,
+    diagnostics = diagnostics_df,
     plot = p,
+    heatmap = p,
+    ranked_plot = ranked_p,
     models = model_list,
     settings = list(
       trait = trait,
       include_checks = include_checks,
       baseline_col = baseline_col,
+      min_combo_reps = min_combo_reps,
       question = "Which lentil-wheat genotype pairs are specifically compatible?"
     )
   )
+}
+
+#' Plot Lentil-Wheat Pair Compatibility as a Heatmap
+#'
+#' Displays observed lentil-wheat compatibility values as a matrix of previous
+#' lentil genotype by current wheat genotype. This is usually easier to read
+#' than plotting long combo names on the axis.
+#'
+#' @param x A result from `model_pair_compatibility()` or its compatibility table.
+#' @param trait Optional trait label for the subtitle.
+#' @param value_col Compatibility column to plot.
+#' @param signal_tol Absolute compatibility threshold below which an ENV x Facet
+#'   is dropped from the plot.
+#' @param drop_no_signal Logical. Drop ENV x Facet panels with no detectable
+#'   pair-specific signal?
+#'
+#' @return A ggplot object.
+#' @export
+plot_pair_compatibility_heatmap <- function(x,
+                                            trait = NULL,
+                                            value_col = "Compatibility_Value",
+                                            signal_tol = 1e-8,
+                                            drop_no_signal = TRUE) {
+  df <- .lr_get_pair_df(x)
+  if (nrow(df) == 0) return(NULL)
+  .lr_check_columns(df, c("Previous_Genotype", "Current_Genotype", "Environment", "Baseline_Group", value_col))
+  if (is.null(trait) && "Trait" %in% names(df)) trait <- paste(unique(as.character(df$Trait)), collapse = ", ")
+
+  plot_df <- df |>
+    dplyr::group_by(.data[["Environment"]], .data[["Baseline_Group"]]) |>
+    dplyr::mutate(
+      Max_Abs_Compatibility = max(abs(.data[[value_col]]), na.rm = TRUE),
+      Pair_Signal = Max_Abs_Compatibility > signal_tol
+    ) |>
+    dplyr::ungroup()
+
+  if (drop_no_signal) {
+    plot_df <- plot_df |>
+      dplyr::filter(.data[["Pair_Signal"]])
+  }
+  if (nrow(plot_df) == 0) return(NULL)
+
+  plot_df <- plot_df |>
+    dplyr::mutate(
+      Panel = paste(.data[["Environment"]], .data[["Baseline_Group"]], sep = " | "),
+      Previous_Genotype = factor(as.character(.data[["Previous_Genotype"]])),
+      Current_Genotype = factor(as.character(.data[["Current_Genotype"]]))
+    )
+
+  ggplot2::ggplot(plot_df, ggplot2::aes(
+    x = .data[["Current_Genotype"]],
+    y = .data[["Previous_Genotype"]],
+    fill = .data[[value_col]]
+  )) +
+    ggplot2::geom_tile(color = "white", linewidth = 0.2) +
+    ggplot2::facet_wrap(~Panel, scales = "free", drop = TRUE) +
+    ggplot2::scale_fill_gradient2(
+      low = "firebrick",
+      mid = "white",
+      high = "forestgreen",
+      midpoint = 0,
+      name = "Pair effect"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(
+      title = "Lentil-Wheat Pair Compatibility",
+      subtitle = paste("Showing only ENV x Facet groups with detectable pair-specific signal", if (!is.null(trait)) paste("| trait:", trait) else ""),
+      x = "Current wheat genotype",
+      y = "Previous lentil genotype"
+    ) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6),
+      axis.text.y = ggplot2::element_text(size = 6),
+      panel.grid = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(face = "bold", size = 8)
+    )
+}
+
+#' Plot Top Lentil-Wheat Pair Compatibility Values
+#'
+#' Shows the strongest positive and negative pair effects without drawing all
+#' observed pair labels in every facet.
+#'
+#' @param x A result from `model_pair_compatibility()` or its compatibility table.
+#' @param trait Optional trait label for the subtitle.
+#' @param n Number of strongest absolute pair effects per ENV x Facet panel.
+#' @param show_se Logical. Draw conditional random-effect standard errors?
+#' @param signal_tol Absolute compatibility threshold below which an ENV x Facet
+#'   is dropped from the plot.
+#' @param drop_no_signal Logical. Drop ENV x Facet panels with no detectable
+#'   pair-specific signal?
+#'
+#' @return A ggplot object.
+#' @export
+plot_pair_compatibility_ranked <- function(x,
+                                           trait = NULL,
+                                           n = 12,
+                                           show_se = FALSE,
+                                           signal_tol = 1e-8,
+                                           drop_no_signal = TRUE) {
+  df <- .lr_get_pair_df(x)
+  if (nrow(df) == 0) return(NULL)
+  .lr_check_columns(df, c("Combo", "Environment", "Baseline_Group", "Compatibility_Value"))
+  if (is.null(trait) && "Trait" %in% names(df)) trait <- paste(unique(as.character(df$Trait)), collapse = ", ")
+
+  group_cols <- c("Environment", "Baseline_Group")
+  group_signal <- df |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) |>
+    dplyr::summarize(
+      Max_Abs_Compatibility = max(abs(.data[["Compatibility_Value"]]), na.rm = TRUE),
+      Pair_Signal = Max_Abs_Compatibility > signal_tol,
+      .groups = "drop"
+    )
+
+  signal_df <- df |>
+    dplyr::inner_join(group_signal, by = group_cols) |>
+    dplyr::filter(.data[["Pair_Signal"]]) |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) |>
+    dplyr::slice_max(abs(.data[["Compatibility_Value"]]), n = n, with_ties = FALSE) |>
+    dplyr::ungroup()
+
+  if (!drop_no_signal) {
+    no_signal_df <- group_signal |>
+      dplyr::filter(!.data[["Pair_Signal"]]) |>
+      dplyr::transmute(
+        Environment = .data[["Environment"]],
+        Baseline_Group = .data[["Baseline_Group"]],
+        Combo = "No detectable pair-specific signal",
+        Compatibility_Value = 0,
+        SE = NA_real_,
+        Pair_Signal = FALSE,
+        Max_Abs_Compatibility = .data[["Max_Abs_Compatibility"]]
+      )
+    signal_df <- dplyr::bind_rows(signal_df, no_signal_df)
+  }
+
+  if (nrow(signal_df) == 0) return(NULL)
+
+  plot_df <- signal_df |>
+    dplyr::ungroup() |>
+    dplyr::arrange(.data[["Environment"]], .data[["Baseline_Group"]], .data[["Compatibility_Value"]]) |>
+    dplyr::mutate(
+      Panel = paste(.data[["Environment"]], .data[["Baseline_Group"]], sep = " | "),
+      Plot_Combo = paste(.data[["Panel"]], .data[["Combo"]], sep = "___"),
+      Plot_Combo = factor(.data[["Plot_Combo"]], levels = unique(.data[["Plot_Combo"]])),
+      Point_Class = dplyr::case_when(
+        !.data[["Pair_Signal"]] ~ "No detectable pair signal",
+        .data[["Compatibility_Value"]] > 0 ~ "Positive",
+        TRUE ~ "Negative"
+      )
+    )
+
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[["Plot_Combo"]], y = .data[["Compatibility_Value"]])) +
+    ggplot2::geom_segment(
+      ggplot2::aes(xend = .data[["Plot_Combo"]], y = 0, yend = .data[["Compatibility_Value"]]),
+      color = "gray72",
+      linewidth = 0.4
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = .data[["Point_Class"]]),
+      size = 2.1,
+      alpha = 0.9
+    )
+
+  if (show_se && "SE" %in% names(plot_df)) {
+    p <- p + ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = .data[["Compatibility_Value"]] - .data[["SE"]], ymax = .data[["Compatibility_Value"]] + .data[["SE"]]),
+      width = 0.16,
+      color = "gray40",
+      alpha = 0.5,
+      na.rm = TRUE
+    )
+  }
+
+  p +
+    ggplot2::coord_flip() +
+    ggplot2::facet_wrap(~Panel, scales = "free_y", drop = TRUE) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
+    ggplot2::scale_x_discrete(labels = function(x) sub("^.*___", "", x)) +
+    ggplot2::scale_color_manual(
+      values = c(
+        "Positive" = "forestgreen",
+        "Negative" = "firebrick",
+        "No detectable pair signal" = "gray35"
+      ),
+      guide = "none"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(
+      title = "Top Lentil-Wheat Pair Compatibility Values",
+      subtitle = paste("Showing only ENV x Facet groups with detectable pair-specific signal", if (!is.null(trait)) paste("| trait:", trait) else ""),
+      x = "Observed lentil-wheat pair",
+      y = "Pair effect beyond additive lentil and wheat effects"
+    )
 }
 
 .lr_prepare_rotation_data <- function(data,
@@ -414,6 +637,12 @@ model_pair_compatibility <- function(data,
   if (is.data.frame(x)) return(x)
   if (is.list(x) && "legacy_values" %in% names(x)) return(x$legacy_values)
   stop("Expected a legacy-value data frame or a result from model_predecessor_effect().")
+}
+
+.lr_get_pair_df <- function(x) {
+  if (is.data.frame(x)) return(x)
+  if (is.list(x) && "compatibility" %in% names(x)) return(x$compatibility)
+  stop("Expected a pair-compatibility data frame or a result from model_pair_compatibility().")
 }
 
 .lr_as_legacy_plot_df <- function(df) {
@@ -617,6 +846,21 @@ model_pair_compatibility <- function(data,
   formula_str <- paste(trait, "~", fixed_terms, "+", random_terms)
 
   m <- lme4::lmer(as.formula(formula_str), data = env_data)
+  model_diag <- .lr_pair_group_diagnostics(
+    env_data = env_data,
+    trait = trait,
+    prev_gen_col = prev_gen_col,
+    curr_gen_col = curr_gen_col,
+    combo_col = combo_col
+  )
+  model_diag$Status <- "fit"
+  model_diag$Formula <- formula_str
+  model_diag$Model_Singular <- lme4::isSingular(m)
+  vc <- as.data.frame(lme4::VarCorr(m))
+  combo_var <- vc[vc$grp == combo_col, "vcov"]
+  if (length(combo_var) == 0) combo_var <- NA_real_
+  model_diag$Combo_Variance <- combo_var[[1]]
+  model_diag$Residual_Variance <- stats::sigma(m)^2
 
   combo_re <- lme4::ranef(m, condVar = TRUE)[[combo_col]]
   post_var <- attr(combo_re, "postVar")
@@ -653,7 +897,33 @@ model_pair_compatibility <- function(data,
       Compatibility_Pct = (Compatibility_Value / Expected_Additive_Mean) * 100
     )
 
-  list(compatibility = compatibility, model = m)
+  list(compatibility = compatibility, model = m, diagnostics = model_diag)
+}
+
+.lr_pair_group_diagnostics <- function(env_data,
+                                       trait,
+                                       prev_gen_col,
+                                       curr_gen_col,
+                                       combo_col) {
+  combo_counts <- table(env_data[[combo_col]])
+  if (length(combo_counts) == 0) combo_counts <- 0L
+
+  data.frame(
+    Trait = trait,
+    N_Plots = nrow(env_data),
+    N_Previous_Genotypes = dplyr::n_distinct(env_data[[prev_gen_col]]),
+    N_Current_Genotypes = dplyr::n_distinct(env_data[[curr_gen_col]]),
+    N_Combos = dplyr::n_distinct(env_data[[combo_col]]),
+    Min_Reps_Per_Combo = min(as.integer(combo_counts), na.rm = TRUE),
+    Median_Reps_Per_Combo = stats::median(as.integer(combo_counts), na.rm = TRUE),
+    Max_Reps_Per_Combo = max(as.integer(combo_counts), na.rm = TRUE),
+    N_Single_Rep_Combos = sum(as.integer(combo_counts) < 2, na.rm = TRUE),
+    Status = "not_fit",
+    Formula = NA_character_,
+    Model_Singular = NA,
+    Combo_Variance = NA_real_,
+    Residual_Variance = NA_real_
+  )
 }
 
 .lr_plot_predecessor <- function(df, trait, show_se = FALSE) {
@@ -806,41 +1076,7 @@ model_pair_compatibility <- function(data,
 }
 
 .lr_plot_pair_compatibility <- function(df, trait, n = 25) {
-  if (nrow(df) == 0) return(NULL)
-
-  group_cols <- "Environment"
-  if ("Baseline_Group" %in% names(df)) group_cols <- c("Environment", "Baseline_Group")
-
-  plot_df <- df |>
-    dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) |>
-    dplyr::slice_max(abs(Compatibility_Value), n = n, with_ties = FALSE) |>
-    dplyr::ungroup()
-
-  facet_formula <- if ("Baseline_Group" %in% names(plot_df)) {
-    Baseline_Group ~ Environment
-  } else {
-    ~Environment
-  }
-
-  ggplot2::ggplot(plot_df, ggplot2::aes(x = reorder(Combo, Compatibility_Value), y = Compatibility_Value)) +
-    ggplot2::geom_col(ggplot2::aes(fill = Compatibility_Value > 0), alpha = 0.85) +
-    ggplot2::geom_errorbar(
-      ggplot2::aes(ymin = Compatibility_Value - SE, ymax = Compatibility_Value + SE),
-      width = 0.2,
-      color = "gray40",
-      na.rm = TRUE
-    ) +
-    ggplot2::coord_flip() +
-    ggplot2::facet_grid(facet_formula, scales = "free_y", space = "free_y") +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
-    ggplot2::scale_fill_manual(values = c("TRUE" = "forestgreen", "FALSE" = "firebrick"), guide = "none") +
-    ggplot2::theme_minimal() +
-    ggplot2::labs(
-      title = "Lentil-Wheat Pair Compatibility",
-      subtitle = paste("Largest absolute compatibility values within ENV x wheat facet for trait:", trait),
-      x = "Lentil-wheat pair",
-      y = "Pair effect beyond additive lentil and wheat effects"
-    )
+  plot_pair_compatibility_ranked(df, trait = trait, n = n)
 }
 
 .lr_summarize_baseline <- function(x) {
