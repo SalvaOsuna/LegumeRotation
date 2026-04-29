@@ -83,11 +83,11 @@ lentil_subsample <- read.delim(
 wheat_traits <- c("HD", "HT", "MAT", "LD", "YLD", "Y.ADJ", "TWT", "KWT", "PRO")
 lentil_traits <- c("DTE", "DTF", "VegP", "DTM", "RepP", "lodging", "YLD", "PRT", "DS")
 lentil_subsample_traits <- c(
-  "biomass.g", "straw.g", "seed.g", "n.seeds", "KSW", "HI", "NIR.seed.pre",
-  "LECO.stover.C.pct", "LECO.stover.N.pct", "LECO.stover.P.pct", "LECO.stover.N.g.m",
-  "LECO.seed.C.pct", "LECO.seed.N.pct", "LECO.seed.P.pct", "LECO.seed.N.g.m",
+  "biomass.g", "straw.g", "seed.g", "n.seeds", "KSW", "HI",
+  "LECO.stover.C.pct", "LECO.stover.N.pct", "LECO.stover.N.g.m",
+  "LECO.seed.C.pct", "LECO.seed.N.pct",  "LECO.seed.N.g.m",
   "NHI.pct", "NHI.rel", "C.N.ratio.stover", "C.N.ratio.seed"
-)
+) # traits not included: "NIR.seed.pre", "LECO.stover.P.pct","LECO.seed.P.pct",
 
 wheat_treatment <- wheat_pheno |>
   dplyr::filter(Type == "Treatment") |>
@@ -104,6 +104,8 @@ lentil_treatment <- lentil_pheno |>
     Unique.Row.ID = Unique.ID
   )
 
+#From the package root, the easiest option to activate the functions is:
+devtools::load_all()
 
 # title: Inspect trial structure and trait distributions.
 # These checks confirm column names, genotype counts, replicate balance, trait ranges, and basic distribution plots before fitting models.
