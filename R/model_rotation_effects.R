@@ -150,10 +150,10 @@ model_predecessor_effect <- function(data,
   )
 }
 
-#' Extract GWAS-Ready Lentil Predecessor Phenotypes
+#' Extract GWAS-Ready Lentil Legacy Values
 #'
-#' Converts predecessor-effect model output into one phenotype per previous
-#' lentil genotype, environment, and trait. The default phenotype is
+#' Converts predecessor-effect model output into one legacy value per previous
+#' lentil genotype, environment, and trait. The default value is
 #' `Legacy_Value`, which is the model-corrected deviation from the relevant
 #' ENV x Facet baseline.
 #'
@@ -185,7 +185,7 @@ extract_predecessor_gwas_phenotypes <- function(x, phenotype_col = "Legacy_Value
       Trait = .data[["Trait"]]
     ) |>
     dplyr::summarize(
-      Predecessor_Phenotype = .lr_weighted_mean(.data[[phenotype_col]], .data[["N_Plots"]]),
+      Legacy_Value = .lr_weighted_mean(.data[[phenotype_col]], .data[["N_Plots"]]),
       Corrected_Mean = .lr_weighted_mean(.data[["Corrected_Mean"]], .data[["N_Plots"]]),
       Facet_Baseline_Mean = .lr_weighted_mean(.data[["Baseline_Mean"]], .data[["N_Plots"]]),
       Global_Legacy_Value = .lr_weighted_mean(.data[["Legacy_Value_Global"]], .data[["N_Plots"]]),
@@ -201,7 +201,7 @@ extract_predecessor_gwas_phenotypes <- function(x, phenotype_col = "Legacy_Value
     ) |>
     dplyr::group_by(.data[["Environment"]], .data[["Trait"]]) |>
     dplyr::mutate(
-      Rank = rank(-.data[["Predecessor_Phenotype"]], ties.method = "first")
+      Rank = rank(-.data[["Legacy_Value"]], ties.method = "first")
     ) |>
     dplyr::ungroup() |>
     dplyr::arrange(.data[["Environment"]], .data[["Trait"]], .data[["Rank"]])
@@ -209,10 +209,10 @@ extract_predecessor_gwas_phenotypes <- function(x, phenotype_col = "Legacy_Value
   out
 }
 
-#' Plot GWAS-Ready Lentil Predecessor Phenotypes
+#' Plot GWAS-Ready Lentil Legacy Values
 #'
 #' Shows a single ranked list of lentil genotypes per environment using the
-#' facet-corrected predecessor phenotype. Bars are colored by the wheat-partner
+#' facet-corrected `Legacy_Value`. Bars are colored by the wheat-partner
 #' facet to preserve design context without splitting the ranking into panels.
 #'
 #' @param x A result from `model_predecessor_effect()` or a legacy-value data frame.
@@ -1024,10 +1024,10 @@ plot_pair_compatibility_ranked <- function(x,
     ggplot2::scale_x_discrete(labels = function(x) sub("^.*___", "", x)) +
     ggplot2::theme_minimal() +
     ggplot2::labs(
-      title = "GWAS-Ready Lentil Predecessor Phenotypes",
-      subtitle = paste("Facet-corrected wheat response phenotype", if (!is.null(trait)) paste("| trait:", trait) else ""),
+      title = "GWAS-Ready Lentil Legacy Values",
+      subtitle = paste("Facet-corrected wheat legacy value", if (!is.null(trait)) paste("| trait:", trait) else ""),
       x = "Previous lentil genotype",
-      y = "Facet-corrected predecessor phenotype",
+      y = "Facet-corrected Legacy_Value",
       color = "Wheat-partner facet"
     )
 }

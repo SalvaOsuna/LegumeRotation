@@ -121,15 +121,19 @@ Because the pairing network is structured by `Facet`, comparing every lentil aga
 
 The current preferred predecessor-effect output therefore reports:
 
-``` text
-Legacy_Value = Corrected_Mean - mean(Corrected_Mean within ENV x Facet)
-```
+$$
+\mathrm{Legacy\_Value}
+= \mathrm{Corrected\_Mean}
+- \operatorname{mean}_{\mathrm{ENV}\times\mathrm{Facet}}\left(\mathrm{Corrected\_Mean}\right)
+$$
 
 It also keeps a global environment deviation for comparison:
 
-``` text
-Legacy_Value_Global = Corrected_Mean - mean(Corrected_Mean within ENV)
-```
+$$
+\mathrm{Legacy\_Value\_Global}
+= \mathrm{Corrected\_Mean}
+- \operatorname{mean}_{\mathrm{ENV}}\left(\mathrm{Corrected\_Mean}\right)
+$$
 
 The facet-aware value is the preferred interpretation for the sparse pairing design.
 
@@ -162,6 +166,29 @@ For lentil or wheat phenotyping, the spatial model is conceptually:
 ``` r
 trait ~ design terms + genotype random effect + PSANOVA(Row, Col)
 ```
+
+Mathematically, within each environment:
+
+$$
+Y_i = \mu_e + d_{e,r(i)} + G_{e,j(i)} + f_e(R_i, C_i) + \varepsilon_i
+$$
+
+where:
+
+-   `y_i` is the observed value of the trait for plot `i`.
+-   `mu_e` is the environment-specific intercept or trial mean.
+-   `d_{e,r(i)}` is the fixed design effect for the replicate, block, or other design term assigned to plot `i`.
+-   `g_{e,j(i)}` is the genotype effect for genotype `j` in environment `e`; in the SpATS and lme4 implementations this is estimated as a random effect/BLUP.
+-   `f_e(row_i, col_i)` is the smooth two-dimensional spatial surface fitted from plot row and column, implemented with `PSANOVA(Row, Col)` in SpATS.
+-   `epsilon_i` is the residual plot-level error.
+
+The genotype prediction reported in the BLUP table is:
+
+$$
+\mathrm{Predicted}_{e,j} = \hat{\mu}_e + \hat{G}_{e,j}
+$$
+
+after accounting for the design and spatial terms in the fitted model.
 
 In package terms:
 
@@ -226,19 +253,75 @@ In the SpATS implementation:
 Y.ADJ ~ Lentil + Rep_combo + PSANOVA(Row, Col) + random(Wheat)
 ```
 
+Mathematically, within each environment:
+
+$$
+Y_i = \mu_e + L_{e,l(i)} + d_{e,r(i)} + W_{e,w(i)} + f_e(R_i, C_i) + \varepsilon_i
+$$
+
+where:
+
+-   `y_i` is the observed Year 2 wheat trait value for plot `i`.
+-   `mu_e` is the environment-specific mean.
+-   `L_{e,l(i)}` is the effect of the previous lentil genotype `l` grown in that plot in Year 1. This is the predecessor effect of interest.
+-   `d_{e,r(i)}` is the fixed design effect, such as `Rep_combo`, for plot `i`.
+-   `W_{e,w(i)}` is the random effect of the current wheat genotype `w` in Year 2.
+-   `f_e(row_i, col_i)` is the spatial field trend for the wheat trial.
+-   `epsilon_i` is residual plot-level error.
+
+The model-corrected predecessor mean for lentil genotype `l` is:
+
+$$
+\mathrm{Corrected\_Mean}_{e,l} = \hat{\mu}_e + \hat{L}_{e,l}
+$$
+
+For a lentil genotype assigned to wheat facet `b`, the facet baseline is:
+
+$$
+\mathrm{Baseline\_Mean}_{e,b}
+= \frac{1}{n_{e,b}}\sum_{l \in (e,b)} \mathrm{Corrected\_Mean}_{e,l}
+$$
+
+The reported legacy quantities are:
+
+$$
+\mathrm{Legacy\_Value}_{e,l}
+= \mathrm{Corrected\_Mean}_{e,l} - \mathrm{Baseline\_Mean}_{e,b(l)}
+$$
+
+$$
+\mathrm{Legacy\_Value\_Global}_{e,l}
+= \mathrm{Corrected\_Mean}_{e,l}
+- \frac{1}{n_e}\sum_{l \in e} \mathrm{Corrected\_Mean}_{e,l}
+$$
+
+$$
+\mathrm{Network\_Correction}_{e,l}
+= \mathrm{Corrected\_Mean}_{e,l} - \mathrm{Raw\_Mean}_{e,l}
+$$
+
+where:
+
+-   `b(l)` is the wheat-partner facet associated with lentil genotype `l`.
+-   `Raw_Mean_{e,l}` is the uncorrected mean wheat performance observed after lentil genotype `l`.
+-   `Network_Correction_{e,l}` measures how much the model shifted the raw lentil-associated wheat mean after accounting for wheat partners, design terms, and spatial position.
+
 The wheat genotype is modeled as a random effect. This is the core correction for the incomplete pairing network. If a lentil was paired with low-yielding wheat genotypes, the wheat random effects help correct the lentil estimate upward. If it was paired with high-yielding wheat genotypes, the model corrects downward.
 
 After the model estimates corrected lentil means, the preferred legacy value is calculated relative to the facet baseline:
 
-``` text
-Legacy_Value = Corrected_Mean - mean(Corrected_Mean within ENV x Facet)
-```
+$$
+\mathrm{Legacy\_Value}
+= \mathrm{Corrected\_Mean}
+- \operatorname{mean}_{\mathrm{ENV}\times\mathrm{Facet}}\left(\mathrm{Corrected\_Mean}\right)
+$$
 
 The raw-vs-corrected output also reports:
 
-``` text
-Network_Correction = Corrected_Mean - Raw_Mean
-```
+$$
+\mathrm{Network\_Correction}
+= \mathrm{Corrected\_Mean} - \mathrm{Raw\_Mean}
+$$
 
 ### Example
 
@@ -289,23 +372,38 @@ The correction plot shows:
 
 This helps diagnose whether the model is correcting a lentil upward or downward because of its wheat partners and spatial position.
 
-### GWAS-ready predecessor phenotypes
+### GWAS-ready legacy values
 
-For lentil GWAS, the useful output is one value per lentil genotype, environment, and trait. `model_predecessor_effect()` now returns this table directly:
+For lentil GWAS, the useful output is one `Legacy_Value` per lentil genotype, environment, and wheat trait. `model_predecessor_effect()` returns these values in:
 
 ``` r
-avg_predecessor_yadj$gwas_phenotypes
+avg_predecessor_yadj$legacy_values
 ```
 
 The key column is:
 
 ``` text
-Predecessor_Phenotype
+Legacy_Value
 ```
 
-By default, this is the same biological quantity as `Legacy_Value`: the model-corrected wheat response after a lentil genotype, expressed as a deviation from the relevant ENV x Facet baseline.
+This is the model-corrected wheat response after a lentil genotype, expressed as a deviation from the relevant ENV x Facet baseline.
 
-This phenotype can be interpreted as:
+Mathematically:
+
+$$
+\mathrm{Legacy\_Value}_{e,l,t}
+= \mathrm{Corrected\_Mean}_{e,l,t} - \mathrm{Baseline\_Mean}_{e,b(l),t}
+$$
+
+where:
+
+-   `e` is the wheat environment.
+-   `l` is the previous lentil genotype.
+-   `t` is the wheat trait being used as the legacy target, such as `Y.ADJ` or `PRO`.
+-   `b(l)` is the wheat-partner facet associated with lentil genotype `l`.
+-   `Legacy_Value_{e,l,t}` is the facet-corrected wheat legacy value estimated from the predecessor model.
+
+This value can be interpreted as:
 
 ``` text
 How much better or worse did wheat perform after this lentil genotype than expected for its wheat-partner facet?
@@ -313,22 +411,17 @@ How much better or worse did wheat perform after this lentil genotype than expec
 
 Positive values indicate lentil genotypes associated with improved following-wheat performance. These values can be used as Year 2 legacy phenotypes for association with lentil genomic markers. The biological target is a lentil genomic signature associated with improving the next crop, rather than improving the lentil crop itself.
 
-The ranked GWAS-style plot is available as:
+The ranked legacy-value plot is available as:
 
 ``` r
 avg_predecessor_yadj$ranked_plot
-plot_predecessor_gwas_phenotypes(avg_predecessor_yadj)
 ```
 
 This plot puts all lentil genotypes into one ranked list per environment, while coloring bars by `Facet` to preserve the sparse-design context.
 
-The SpATS output includes prediction standard errors for the adjusted lentil predecessor means. These are kept in the output table as `SE`, but they are not drawn by default in the ranked plots because the legacy phenotype is a deviation from a facet baseline and the SE bars can visually overwhelm the ranking. To inspect them as a diagnostic:
+The SpATS output includes prediction standard errors for the adjusted lentil predecessor means. These are kept in the output table as `SE`, but they are not drawn by default in the ranked plots because `Legacy_Value` is a deviation from a facet baseline and the SE bars can visually overwhelm the ranking.
 
-``` r
-plot_predecessor_gwas_phenotypes(avg_predecessor_yadj, show_se = TRUE)
-```
-
-Boxplots are better reserved for plot-level raw or residualized observations. The GWAS phenotype table has one adjusted value per lentil genotype x environment x trait, so a boxplot would imply a distribution that is not present in that output.
+Boxplots are better reserved for plot-level raw or residualized observations. The `legacy_values` table has one adjusted legacy value per lentil genotype x environment x trait, so a boxplot would imply a distribution that is not present in that output.
 
 ## Formula Layer 3: Lentil-Wheat Pair Compatibility
 
@@ -347,6 +440,61 @@ wheat_trait ~ Lentil + Wheat + spatial terms + random(Combo) + random(Block)
 ```
 
 The `Combo` random effect is the pair-specific compatibility value.
+
+Mathematically, within each ENV x Facet network:
+
+$$
+Y_i = \mu_{e,b} + L_{e,b,l(i)} + W_{e,b,w(i)} + d_{e,b,r(i)}
+      + f_{e,b}(R_i, C_i) + C_{e,b,c(i)} + B_{e,b,k(i)} + \varepsilon_i
+$$
+
+where:
+
+-   `y_i` is the observed Year 2 wheat trait value for plot `i`.
+-   `mu_{e,b}` is the mean for environment `e` and facet `b`.
+-   `L_{e,b,l(i)}` is the additive effect of the previous lentil genotype `l`.
+-   `W_{e,b,w(i)}` is the additive effect of the current wheat genotype `w`.
+-   `d_{e,b,r(i)}` represents any optional fixed design terms.
+-   `f_{e,b}(row_i, col_i)` is the spatial correction used by the lme4 implementation, represented by polynomial row and column terms plus their interaction.
+-   `C_{e,b,c(i)}` is the random effect for the observed lentil-wheat pair `c`, stored in `Combo`.
+-   `B_{e,b,k(i)}` is the optional random block or design effect for block `k`.
+-   `epsilon_i` is residual plot-level error.
+
+The additive expectation for pair `c = (l,w)` is:
+
+$$
+\mathrm{Expected\_Additive\_Mean}_{e,b,c}
+= \frac{1}{n_c}\sum_{i:c(i)=c}
+\left(
+\hat{\mu}_{e,b} + \hat{L}_{e,b,l(i)} + \hat{W}_{e,b,w(i)}
++ \hat{d}_{e,b,r(i)} + \hat{f}_{e,b}(R_i, C_i)
+\right)
+$$
+
+over the plots where that pair was observed. The corrected pair mean is:
+
+$$
+\mathrm{Corrected\_Pair\_Mean}_{e,b,c}
+= \frac{1}{n_c}\sum_{i:c(i)=c}
+\left(
+\mathrm{Expected\_Additive}_i + \hat{C}_{e,b,c(i)} + \hat{B}_{e,b,k(i)}
+\right)
+$$
+
+and the compatibility value is:
+
+$$
+\mathrm{Compatibility\_Value}_{e,b,c} = \hat{C}_{e,b,c}
+$$
+
+$$
+\mathrm{Compatibility\_Pct}_{e,b,c}
+= 100 \times
+\frac{\mathrm{Compatibility\_Value}_{e,b,c}}
+     {\mathrm{Expected\_Additive\_Mean}_{e,b,c}}
+$$
+
+Positive `Compatibility_Value` means the observed pair performed better than expected from the additive lentil and wheat effects in that ENV x Facet network.
 
 The current implementation fits this model within each ENV x Facet network. That is important because the full 100 x 100 factorial is not observed and the facets are not fully connected through all genotype combinations.
 
@@ -426,52 +574,7 @@ The diagnostics table should be checked before interpreting pair effects. Useful
 
 For this design, a reliable ENV x Facet group should usually have 10 lentils, 10 wheats, 100 observed combos, and at least two plots per combo. If a panel appears empty in an old bar plot, that is usually a visualization artifact from crossing all environment and facet labels. The new heatmap uses only observed ENV x Facet panels.
 
-## Formula Layer 4: Older Legacy Wrappers
-
-The older functions:
-
-``` r
-model_legacy_spats()
-model_legacy_spats2()
-```
-
-now call the newer predecessor-effect engine. They are retained for backward compatibility.
-
-`model_legacy_spats()` returns the facet-aware predecessor plot.
-
-`model_legacy_spats2()` returns the raw-vs-corrected correction plot as its main plot.
-
-These wrappers are useful if older draft scripts already call them, but new analyses should prefer:
-
-``` r
-model_predecessor_effect()
-```
-
-## Formula Layer 5: Facet-Corrected Legacy Alternative
-
-The function:
-
-``` r
-model_legacy_facet()
-```
-
-implements an older alternative approach:
-
-1.  Estimate wheat genotype baseline performance.
-2.  Estimate lentil-associated observed wheat performance.
-3.  Compare lentil performance against the expected mean of its specific wheat partners.
-
-Conceptually:
-
-``` text
-Legacy_Value = Observed_Lentil_Associated_Wheat_Performance - Facet_Mean
-```
-
-### Insight
-
-This is a useful sensitivity analysis because it makes the facet correction explicit. However, the preferred model is currently `model_predecessor_effect()` because it directly models previous lentil genotype, current wheat genotype, and spatial trend in one model.
-
-## Formula Layer 6: Correlating Lentil Traits with Wheat Legacy
+## Formula Layer 4: Correlating Lentil Traits with Wheat Legacy
 
 Once lentil BLUPs and wheat legacy values are estimated, the package can combine them into a long table and use:
 
@@ -524,6 +627,47 @@ plot_legacy_correlations(
   target_trait = "Wheat_Legacy_PRO"
 )
 ```
+
+Mathematically, for each environment, lentil predictor trait, and wheat legacy target:
+
+$$
+X_{e,l,p} = \text{lentil predictor value for genotype } l
+$$
+
+$$
+Z_{e,l,t} = \text{wheat legacy target for genotype } l
+$$
+
+The environment-specific correlation is:
+
+$$
+r_{e,p,t}
+=
+\frac{
+\sum_l \left(X_{e,l,p} - \bar{X}_{e,p}\right)
+       \left(Z_{e,l,t} - \bar{Z}_{e,t}\right)
+}{
+\sqrt{
+\sum_l \left(X_{e,l,p} - \bar{X}_{e,p}\right)^2
+\sum_l \left(Z_{e,l,t} - \bar{Z}_{e,t}\right)^2
+}
+}
+$$
+
+The reported driver summaries use:
+
+$$
+R^2_{e,p,t} = r_{e,p,t}^{2}
+$$
+
+where:
+
+-   `X_{e,l,p}` can come from lentil full-trial BLUPs, lentil subsample summaries, or lentil microbiome summaries.
+-   `Z_{e,l,t}` is usually `Legacy_Value` from `model_predecessor_effect()`, renamed as a wheat legacy target such as `Wheat_Legacy_YADJ`.
+-   `l` indexes lentil genotypes with both predictor and target values.
+-   `r_{e,p,t}` is the Pearson correlation between a Year 1 lentil predictor and a Year 2 wheat legacy target.
+-   `R2_{e,p,t}` is the proportion of target variation explained by that single predictor in the environment-specific exploratory correlation.
+-   p-values and FDR values summarize statistical evidence for the correlation, but they do not establish causality.
 
 When many subsample traits are included, the focused driver plot is easier to read than the full heatmap:
 

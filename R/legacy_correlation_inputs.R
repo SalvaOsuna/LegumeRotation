@@ -249,13 +249,13 @@ prepare_lentil_microbiome_predictors <- function(data,
 #' @param ... Named `model_predecessor_effect()` results. Names are used in
 #'   target trait labels, for example `YADJ = avg_predecessor_yadj`.
 #' @param prefix Prefix used for target trait labels.
-#' @param phenotype_col Phenotype column in each result's `gwas_phenotypes`.
+#' @param phenotype_col Legacy-value column to use as the wheat target.
 #'
 #' @return Long-format data frame with Genotype, Environment, Trait, Predicted.
 #' @export
 prepare_wheat_legacy_targets <- function(...,
                                          prefix = "Wheat_Legacy_",
-                                         phenotype_col = "Predecessor_Phenotype") {
+                                         phenotype_col = "Legacy_Value") {
   legacy_list <- list(...)
   if (length(legacy_list) == 0) stop("Provide at least one wheat legacy result.")
 
@@ -267,7 +267,22 @@ prepare_wheat_legacy_targets <- function(...,
   out <- vector("list", length(legacy_list))
   for (i in seq_along(legacy_list)) {
     x <- legacy_list[[i]]
-    df <- if (is.list(x) && "gwas_phenotypes" %in% names(x)) x$gwas_phenotypes else extract_predecessor_gwas_phenotypes(x)
+    df <- if (is.list(x) &&
+              "legacy_values" %in% names(x) &&
+              phenotype_col %in% names(x$legacy_values)) {
+      x$legacy_values
+    } else if (is.list(x) &&
+               "gwas_phenotypes" %in% names(x) &&
+               phenotype_col %in% names(x$gwas_phenotypes)) {
+      x$gwas_phenotypes
+    } else if (is.data.frame(x) && phenotype_col %in% names(x)) {
+      x
+    } else {
+      extract_predecessor_gwas_phenotypes(x)
+    }
+    if (!"Genotype" %in% names(df) && "Previous_Genotype" %in% names(df)) {
+      df$Genotype <- df$Previous_Genotype
+    }
     .lr_check_columns(df, c("Genotype", "Environment", phenotype_col))
     if (!"N_Plots" %in% names(df)) df$N_Plots <- NA_integer_
 
