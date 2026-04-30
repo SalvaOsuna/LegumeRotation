@@ -395,23 +395,58 @@ includes:</p>
 <li>100 wheat genotypes in Year 2.</li>
 <li>20 observations per genotype per location for the full-trial
 phenotypic layers.</li>
-<li>A sparse lentil-wheat pairing network rather than a complete
-factorial design.</li>
+<li>A structured incomplete lentil-wheat factorial design.</li>
 </ul>
-<p>A complete lentil by wheat factorial would require:</p>
-<pre class="text"><code>100 lentil genotypes x 100 wheat genotypes = 10,000 genotype combinations</code></pre>
-<p>before replication and locations. That is not feasible in the
-available field space. Instead, the design uses a sparse or incomplete
-factorial structure. Each lentil genotype is paired with a subset of 10
-wheat partners, following this sctructure:</p>
-<pre class="text"><code>L001 paired with W001-W010
-L002 paired with W011-W020
+<div id="structured-incomplete-factorial-design" class="section level3">
+<h3>Structured Incomplete Factorial Design</h3>
+<p>The experiment uses a structured incomplete factorial design. A full
+100 lentil x 100 wheat factorial would require 10,000 genotype
+combinations before replication and locations, which is not feasible.
+Instead, the design is divided into 10 wheat-partner facets.</p>
+<p>Each facet contains 10 wheat genotypes and 10 lentil genotypes.
+Within a facet, all 10 x 10 = 100 lentil-wheat combinations are
+evaluated. Therefore, the design is globally incomplete relative to the
+full 100 x 100 factorial, but locally complete within each facet.</p>
+<p>For example, the first wheat facet contains W001-W010. These wheats
+are paired with L001, L011, L021, L031, L041, L051, L061, L071, L081,
+and L091, giving 100 observed lentil-wheat combinations. The second
+wheat facet contains W011-W020 and is paired with L002, L012, L022,
+L032, L042, L052, L062, L072, L082, and L092. This logic continues
+until the final facet, which contains W091-W100 paired with L010, L020,
+L030, L040, L050, L060, L070, L080, L090, and L100.</p>
+<p>Thus, <code>Facet</code> defines a local lentil-wheat network. Legacy
+effects should primarily be interpreted within ENV x Facet, because
+lentils in different facets were not evaluated against the same wheat
+genotypes.</p>
+</div>
+<div id="facet-definition" class="section level3">
+<h3>Facet Definition</h3>
+<p>The wheat file stores the local network in the <code>Facet</code>
+column. Facet labels such as <code>W001_W010</code> identify the
+10-wheat partner set used for that local factorial. In the intended
+ACTIVATE design, each ENV x Facet contains:</p>
+<pre class="text"><code>10 lentil genotypes x 10 wheat genotypes = 100 observed combinations</code></pre>
+</div>
+<div id="expected-lentil-and-wheat-membership-by-facet" class="section level3">
+<h3>Expected Lentil and Wheat Membership by Facet</h3>
+<p>The lentil membership follows a modulo pattern:</p>
+<pre class="text"><code>Facet 1:  W001-W010 paired with L001, L011, L021, ..., L091
+Facet 2:  W011-W020 paired with L002, L012, L022, ..., L092
+Facet 3:  W021-W030 paired with L003, L013, L023, ..., L093
 ...
-L100 paired with W091-W100</code></pre>
-<p>The wheat file stores this grouping in the <code>Facet</code> column.
-A facet is a wheat-partner network or wheat block of genotype partners.
-This matters because lentils in different facets are not necessarily
-connected through the same wheat genotype set.</p>
+Facet 10: W091-W100 paired with L010, L020, L030, ..., L100</code></pre>
+<p>Wheat membership follows blocks of ten: W001-W010 are facet 1,
+W011-W020 are facet 2, and so on through W091-W100 in facet 10.</p>
+</div>
+<div id="why-legacy-effects-are-interpreted-within-env-x-facet" class="section level3">
+<h3>Why Legacy Effects Are Interpreted Within ENV x Facet</h3>
+<p>Because each facet has its own wheat partner set,
+<code>Legacy_Value</code> is a within-facet deviation. It compares a
+lentil genotype against the other lentils tested with the same 10 wheat
+genotypes in the same environment. A cross-facet ranking of
+<code>Legacy_Value</code> is therefore a ranking of within-facet
+deviations, not a ranking from a fully connected 100 x 100 factorial.</p>
+</div>
 </div>
 <div id="data-layers" class="section level2">
 <h2>Data Layers</h2>
@@ -471,17 +506,14 @@ ignored, genotype effects can be confounded with field position.</p>
 <p>The spatial surface helps separate genotype signal from field
 heterogeneity.</p>
 </div>
-<div id="incomplete-lentil-wheat-pairing" class="section level3">
-<h3>2. Incomplete Lentil-Wheat Pairing</h3>
-<p>Not every lentil is paired with every wheat. This creates an
-incomplete genotype network. A raw mean for a lentil can be biased if
-that lentil happened to be paired with unusually high-performing or
-low-performing wheat genotypes.</p>
-<p>For example, if L001 is only paired with W001-W010, and W001-W010 are
-generally low-yielding wheat genotypes, L001’s raw Year 2 wheat
-performance could look poor even if its true legacy effect is
-positive.</p>
-<p>This is why wheat genotype must be included in the model.</p>
+<div id="structured-incomplete-lentil-wheat-pairing" class="section level3">
+<h3>2. Structured Incomplete Lentil-Wheat Pairing</h3>
+<p>Not every lentil is paired with every wheat across the full
+experiment. This creates a globally incomplete genotype network.
+However, the design is locally complete within each ENV x Facet: the 10
+lentils in that facet are each evaluated against the same 10 wheat
+genotypes.</p>
+<p>This is why wheat genotype and facet structure must be included in`n the analysis. Within a facet, wheat genotype correction compares lentils`n against a common local wheat-partner set. Across facets, raw or`n corrected means should not be interpreted as if every lentil had been`n tested against all 100 wheat genotypes.</p>
 </div>
 <div id="facet-specific-baselines" class="section level3">
 <h3>3. Facet-Specific Baselines</h3>
@@ -505,8 +537,8 @@ reports:</p>
 -
 \operatorname{mean}_{\mathrm{ENV}}\left(\mathrm{Corrected\_Mean}\right)
 \]</span></p>
-<p>The facet-aware value is the preferred interpretation for the sparse
-pairing design.</p>
+<p>The facet-aware value is the preferred interpretation for the
+structured incomplete design.</p>
 </div>
 <div id="pair-compatibility-is-not-the-same-as-lentil-legacy" class="section level3">
 <h3>4. Pair Compatibility Is Not the Same as Lentil Legacy</h3>
@@ -516,13 +548,57 @@ biological questions.</p>
 <pre class="text"><code>Which lentil genotypes tend to leave better wheat-growing conditions?</code></pre>
 <p>Pair compatibility asks:</p>
 <pre class="text"><code>Which observed lentil-wheat combinations perform better than expected from their separate lentil and wheat effects?</code></pre>
-<p>Because the design is sparse, pair compatibility should be
-interpreted within the observed network. It should not be treated as
-evidence for unobserved lentil-wheat combinations.</p>
+<p>Because the design is globally incomplete, pair compatibility should
+be interpreted within the observed local 10 x 10 network. It should not
+be treated as evidence for unobserved lentil-wheat combinations outside
+that ENV x Facet.</p>
 </div>
 </div>
-<div id="formula-layer-1-independent-trait-models" class="section level2">
-<h2>Formula Layer 1: Independent Trait Models</h2>
+<div id="design-validation" class="section level2">
+<h2>Design Validation</h2>
+<p>Before fitting predecessor-effect models, pair-compatibility models,
+plotting functions, or GWAS-ready legacy exports, the observed data
+should be checked against the intended structured incomplete factorial
+design.</p>
+<div id="check-local-10-x-10-completeness" class="section level3">
+<h3>Check Local 10 x 10 Completeness</h3>
+<pre class="r"><code>design_summary &lt;- check_rotation_design(
+  data = wheat_treatment,
+  env_col = &quot;ENV&quot;,
+  facet_col = &quot;Facet&quot;,
+  lentil_col = &quot;Lentil&quot;,
+  wheat_col = &quot;Wheat&quot;,
+  combo_col = &quot;Combo&quot;
+)</code></pre>
+<p>For a clean treatment design, each ENV x Facet should usually report
+10 previous genotypes, 10 current genotypes, 100 combos, and
+<code>Expected_10x10 = TRUE</code>.</p>
+</div>
+<div id="check-lentil-to-facet-assignment" class="section level3">
+<h3>Check Lentil-to-Facet Assignment</h3>
+<pre class="r"><code>lentil_assignment &lt;- check_lentil_facet_assignment(wheat_treatment)</code></pre>
+<p>The <code>Facet_Assignment_OK</code> column should be
+<code>TRUE</code> for all treatment genotypes.</p>
+</div>
+<div id="check-wheat-to-facet-assignment" class="section level3">
+<h3>Check Wheat-to-Facet Assignment</h3>
+<pre class="r"><code>wheat_assignment &lt;- check_wheat_facet_assignment(wheat_treatment)</code></pre>
+<p>The <code>Facet_Assignment_OK</code> column should be
+<code>TRUE</code> for all treatment genotypes.</p>
+</div>
+<div id="global-design-audit" class="section level3">
+<h3>Global Design Audit</h3>
+<pre class="r"><code>design_audit &lt;- audit_rotation_design(wheat_treatment)
+design_audit$design_ok
+design_audit$design_summary</code></pre>
+<p>The model functions now attach design diagnostics when possible.
+Inspect <code>result$design_audit</code> and
+<code>result$diagnostics</code> before ranking lentils or interpreting
+pair effects.</p>
+</div>
+</div>
+<div id="independent-trait-models" class="section level2">
+<h2>Independent Trait Models</h2>
 <p>The generic trait model is implemented in
 <code>model_traits()</code>.</p>
 <div id="spats-trait-model" class="section level3">
@@ -591,8 +667,8 @@ model.</p>
 <pre class="text"><code>Which genotypes perform well for a trait after correcting for field spatial trends?</code></pre>
 </div>
 </div>
-<div id="formula-layer-2-average-lentil-predecessor-effect" class="section level2">
-<h2>Formula Layer 2: Average Lentil Predecessor Effect</h2>
+<div id="predecessor-effect-model" class="section level2">
+<h2>Predecessor Effect Model</h2>
 <p>The preferred function is:</p>
 <pre class="r"><code>model_predecessor_effect()</code></pre>
 <p>Conceptually, the model is:</p>
@@ -762,7 +838,7 @@ crop, rather than improving the lentil crop itself.</p>
 <pre class="r"><code>avg_predecessor_yadj$ranked_plot</code></pre>
 <p>This plot puts all lentil genotypes into one ranked list per
 environment, while coloring bars by <code>Facet</code> to preserve the
-sparse-design context.</p>
+structured incomplete design context.</p>
 <p>The SpATS output includes prediction standard errors for the adjusted
 lentil predecessor means. These are kept in the output table as
 <code>SE</code>, but they are not drawn by default in the ranked plots
@@ -774,8 +850,8 @@ legacy value per lentil genotype x environment x trait, so a boxplot
 would imply a distribution that is not present in that output.</p>
 </div>
 </div>
-<div id="formula-layer-3-lentil-wheat-pair-compatibility" class="section level2">
-<h2>Formula Layer 3: Lentil-Wheat Pair Compatibility</h2>
+<div id="pair-compatibility-model" class="section level2">
+<h2>Pair Compatibility Model</h2>
 <p>The preferred function is:</p>
 <pre class="r"><code>model_pair_compatibility()</code></pre>
 <p>This function asks whether specific observed lentil-wheat pairs have
@@ -841,10 +917,23 @@ is:</p>
 <p>Positive <code>Compatibility_Value</code> means the observed pair
 performed better than expected from the additive lentil and wheat
 effects in that ENV x Facet network.</p>
+<div id="local-10-x-10-factorial-interpretation" class="section level3">
+<h3>Local 10 x 10 Factorial Interpretation</h3>
 <p>The current implementation fits this model within each ENV x Facet
-network. That is important because the full 100 x 100 factorial is not
-observed and the facets are not fully connected through all genotype
-combinations.</p>
+network. This is important because the full 100 x 100 factorial is not
+observed. However, within each facet, the design is locally complete: 10
+lentil genotypes are evaluated against 10 wheat genotypes, giving 100
+observed combinations. Therefore, <code>Compatibility_Value</code>
+should be interpreted as a pair-specific deviation from additive lentil
+and wheat effects within that local 10 x 10 network.</p>
+</div>
+<div id="compatibility_value-vs-compatibility_pct" class="section level3">
+<h3>Compatibility_Value vs Compatibility_Pct</h3>
+<p><code>Compatibility_Value</code> is the primary output.
+<code>Compatibility_Pct</code> is optional and can be unstable when
+<code>Expected_Additive_Mean</code> is near zero or when the response is
+centered, ordinal, residualized, or can be negative.</p>
+</div>
 <div id="example-1" class="section level3">
 <h3>Example</h3>
 <pre class="r"><code>pair_compatibility_yadj &lt;- model_pair_compatibility(
@@ -872,12 +961,16 @@ combinations.</p>
 <li><code>Raw_Mean</code>: raw mean for the pair.</li>
 <li><code>Expected_Additive_Mean</code>: predicted value from lentil,
 wheat, and spatial effects without the pair effect.</li>
-<li><code>Corrected_Pair_Mean</code>: predicted value including the pair
-effect.</li>
+<li><code>Conditional_Predicted_Mean</code>: fitted mean including
+observed design/block random effects.</li>
+<li><code>Marginal_Corrected_Pair_Mean</code>: corrected pair mean
+excluding nuisance random block effects.</li>
+<li><code>Corrected_Pair_Mean</code>: backward-compatible alias for
+<code>Marginal_Corrected_Pair_Mean</code>.</li>
 <li><code>Compatibility_Value</code>: pair-specific deviation from the
 additive expectation.</li>
-<li><code>Compatibility_Pct</code>: compatibility as a percent of the
-additive expectation.</li>
+<li><code>Compatibility_Pct</code>: optional compatibility as a percent
+of the additive expectation.</li>
 </ul>
 </div>
 <div id="insight-2" class="section level3">
@@ -935,8 +1028,8 @@ visualization artifact from crossing all environment and facet labels.
 The new heatmap uses only observed ENV x Facet panels.</p>
 </div>
 </div>
-<div id="formula-layer-4-correlating-lentil-traits-with-wheat-legacy" class="section level2">
-<h2>Formula Layer 4: Correlating Lentil Traits with Wheat Legacy</h2>
+<div id="correlation-and-driver-analysis" class="section level2">
+<h2>Correlation and Driver Analysis</h2>
 <p>Once lentil BLUPs and wheat legacy values are estimated, the package
 can combine them into a long table and use:</p>
 <pre class="r"><code>plot_legacy_correlations()</code></pre>
@@ -1013,8 +1106,8 @@ subsample summaries, or lentil microbiome summaries.</li>
 target such as <code>Wheat_Legacy_YADJ</code>.</li>
 <li><code>l</code> indexes lentil genotypes with both predictor and
 target values.</li>
-<li><code>r_{e,p,t}</code> is the Pearson correlation between a Year 1
-lentil predictor and a Year 2 wheat legacy target.</li>
+<li><code>r_{e,p,t}</code> is the Pearson or Spearman correlation
+between a Year 1 lentil predictor and a Year 2 wheat legacy target.</li>
 <li><code>R2_{e,p,t}</code> is the proportion of target variation
 explained by that single predictor in the environment-specific
 exploratory correlation.</li>
@@ -1027,7 +1120,7 @@ easier to read than the full heatmap:</p>
   data = legacy_correlation_input,
   target_trait = &quot;Wheat_Legacy_PRO&quot;,
   top_n = 20,
-  min_pairs = 10
+  min_pairs = 30
 )
 
 legacy_driver_pro$correlations
@@ -1035,7 +1128,17 @@ legacy_driver_pro$plot</code></pre>
 <p>The driver table reports the environment-specific correlation, R2,
 p-value, FDR, and number of genotype pairs used for each lentil
 predictor trait.</p>
-<div id="insight-4" class="section level3">
+<p>Use <code>method = "spearman"</code> for rank-based exploratory
+correlations when linearity or outliers are a concern. Weighted
+correlations are optional because predictor and legacy SEs are not
+always available on the same scale. <code>prepare_wheat_legacy_targets()</code>
+carries <code>SE</code>, <code>Reliability</code>, and a derived
+<code>Weight</code> column when available. To weight correlations by the
+wheat legacy target uncertainty, use <code>weight_col = "Weight"</code>.
+Weighted correlations report <code>P_Value = NA</code> because the
+weighted correlation is treated as an exploratory effect-size screen
+rather than a standard unweighted correlation test.</p>
+<div id="insight-3" class="section level3">
 <h3>Insight</h3>
 <p>This analysis asks:</p>
 <pre class="text"><code>Which Year 1 lentil traits are associated with positive or negative Year 2 wheat legacy effects?</code></pre>
@@ -1091,8 +1194,8 @@ it is redundant with genotype structure.</li>
 <li>Sparse pair compatibility results are conditional on the observed
 design.</li>
 <li>Singular fits can occur in pair models when variance components are
-small or a facet has too little information. This is expected in sparse
-networks and should be interpreted carefully.</li>
+small or a facet has too little information. This can happen even inside
+local 10 x 10 networks and should be interpreted carefully.</li>
 <li>The testing script <code>test_rotation_formulas_and_plots.R</code>
 is the best place to validate formulas and plots before promoting
 analyses into package vignettes or manuscript-ready scripts.</li>

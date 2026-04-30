@@ -116,6 +116,21 @@ lentil_treatment <- lentil_pheno |>
 #From the package root, the easiest option to activate the functions is:
 devtools::load_all()
 
+
+# title: Audit the structured incomplete factorial rotation design.
+# The expected ACTIVATE structure is globally incomplete but locally complete: each ENV x Facet should contain 10 lentils, 10 wheats, and 100 observed combinations.
+rotation_design_audit <- safe_run("audit_rotation_design: local 10x10 facets", {
+  audit <- audit_rotation_design(wheat_treatment)
+  stopifnot(all(audit$design_summary$N_Previous_Genotypes == 10))
+  stopifnot(all(audit$design_summary$N_Current_Genotypes == 10))
+  stopifnot(all(audit$design_summary$N_Combos == 100))
+  stopifnot(all(audit$design_summary$Expected_10x10))
+  stopifnot(all(audit$lentil_assignment$Facet_Assignment_OK))
+  stopifnot(all(audit$wheat_assignment$Facet_Assignment_OK))
+  audit
+})
+print(rotation_design_audit$design_summary)
+
 # title: Inspect trial structure and trait distributions.
 # These checks confirm column names, genotype counts, replicate balance, trait ranges, and basic distribution plots before fitting models.
 lentil_met <- safe_run("inspect_met: lentil full trial", {
@@ -355,6 +370,20 @@ if (RUN_ROTATION_MODELS) {
   show_plot(pair_compatibility_yadj$heatmap, "pair_compatibility_yadj_heatmap")
   show_plot(pair_compatibility_yadj$ranked_plot, "pair_compatibility_yadj_ranked")
 
+  pair_yadj_observed_check <- safe_run("pair compatibility Y.ADJ uses only observed combinations", {
+    observed <- wheat_treatment |>
+      dplyr::distinct(Environment = ENV, Baseline_Group = Facet, Previous_Genotype = Lentil, Current_Genotype = Wheat, Combo)
+    output_combos <- pair_compatibility_yadj$compatibility |>
+      dplyr::distinct(Environment, Baseline_Group, Previous_Genotype, Current_Genotype, Combo)
+    unobserved <- dplyr::anti_join(
+      output_combos,
+      observed,
+      by = c("Environment", "Baseline_Group", "Previous_Genotype", "Current_Genotype", "Combo")
+    )
+    stopifnot(nrow(unobserved) == 0)
+    output_combos
+  })
+
   pair_compatibility_pro <- safe_run("model_pair_compatibility lme4: PRO", {
     model_pair_compatibility(
       data = wheat_treatment,
@@ -458,7 +487,7 @@ legacy_driver_pro <- safe_run("plot_legacy_driver_correlations: drivers of Wheat
     data = legacy_correlation_input,
     target_trait = "Wheat_Legacy_PRO",
     top_n = 20,
-    min_pairs = 10
+    min_pairs = 30
   )
 })
 print(head(legacy_driver_pro$correlations, 20))
@@ -469,7 +498,7 @@ legacy_driver_yadj <- safe_run("plot_legacy_driver_correlations: drivers of Whea
     data = legacy_correlation_input,
     target_trait = "Wheat_Legacy_YADJ",
     top_n = 20,
-    min_pairs = 10
+    min_pairs = 30
   )
 })
 print(head(legacy_driver_yadj$correlations, 20))
@@ -487,6 +516,7 @@ formula_test_results <- list(
   avg_predecessor_pro = if (exists("avg_predecessor_pro")) avg_predecessor_pro else NULL,
   legacy_values_for_gwas = if (exists("legacy_values_for_gwas")) legacy_values_for_gwas else NULL,
   pair_compatibility_yadj = if (exists("pair_compatibility_yadj")) pair_compatibility_yadj else NULL,
+  pair_yadj_observed_check = if (exists("pair_yadj_observed_check")) pair_yadj_observed_check else NULL,
   pair_compatibility_pro = if (exists("pair_compatibility_pro")) pair_compatibility_pro else NULL,
   legacy_correlation_input = legacy_correlation_input,
   lentil_microbiome_predictors = if (exists("lentil_microbiome_predictors")) lentil_microbiome_predictors else NULL,

@@ -9,6 +9,7 @@
 #' @param env_col Environment/site-year column.
 #' @param prev_gen_col Previous crop genotype column, usually lentil.
 #' @param curr_gen_col Current crop genotype column, usually wheat.
+#' @param combo_col Lentil-wheat pair identifier. Created if missing.
 #' @param spatial_cols Column names for row and column position.
 #' @param baseline_col Network/facet column used to define the comparison
 #'   baseline for legacy values.
@@ -17,6 +18,10 @@
 #' @param check_values Values in `type_col` to remove when `include_checks = FALSE`.
 #' @param include_checks Logical. Include check plots in the model?
 #' @param method `"SpATS"` or `"lme4"`.
+#' @param fit_scope `"env_facet"` fits one model per ENV x Facet network.
+#'   `"env_global"` fits one model per environment and centers by facet after
+#'   fitting. The default is the local 10 x 10 network.
+#' @param validate_design Logical. Run local factorial design diagnostics?
 #'
 #' @return A list with legacy values, plots, fitted models, and settings.
 #' @export
@@ -25,21 +30,27 @@ model_predecessor_effect <- function(data,
                                      env_col = "ENV",
                                      prev_gen_col = "Lentil",
                                      curr_gen_col = "Wheat",
+                                     combo_col = "Combo",
                                      spatial_cols = c("Row", "Col"),
                                      baseline_col = "Facet",
                                      fixed_effect_cols = c("Rep_combo"),
                                      type_col = "Type",
                                      check_values = "Check",
                                      include_checks = FALSE,
-                                     method = c("SpATS", "lme4")) {
+                                     method = c("SpATS", "lme4"),
+                                     fit_scope = c("env_facet", "env_global"),
+                                     validate_design = TRUE) {
 
   method <- match.arg(method)
+  fit_scope <- match.arg(fit_scope)
+
   data <- .lr_prepare_rotation_data(
     data = data,
     trait = trait,
     env_col = env_col,
     prev_gen_col = prev_gen_col,
     curr_gen_col = curr_gen_col,
+    combo_col = combo_col,
     spatial_cols = spatial_cols,
     baseline_col = baseline_col,
     type_col = type_col,
@@ -57,75 +68,154 @@ model_predecessor_effect <- function(data,
 
   results_list <- list()
   model_list <- list()
+  diagnostics_list <- list()
+  design_audit <- NULL
+  if (validate_design && !is.null(baseline_col) && baseline_col %in% names(data) && combo_col %in% names(data)) {
+    design_audit <- audit_rotation_design(
+      data = data,
+      env_col = env_col,
+      facet_col = baseline_col,
+      lentil_col = prev_gen_col,
+      wheat_col = curr_gen_col,
+      combo_col = combo_col
+    )
+    if (!isTRUE(design_audit$design_ok)) {
+      warning(
+        "Rotation design audit found one or more incomplete or unexpected ENV x Facet networks. ",
+        "Inspect result$design_audit before interpreting Legacy_Value rankings.",
+        call. = FALSE
+      )
+    }
+  }
+
   envs <- unique(data[[env_col]])
 
   for (env in envs) {
     env_data <- droplevels(data[data[[env_col]] == env & !is.na(data[[trait]]), ])
     if (nrow(env_data) == 0) next
 
-    fit <- tryCatch({
-      if (method == "SpATS") {
-        .lr_fit_predecessor_spats(
-          env_data = env_data,
-          trait = trait,
-          prev_gen_col = prev_gen_col,
-          curr_gen_col = curr_gen_col,
-          spatial_cols = spatial_cols,
-          baseline_col = baseline_col,
-          fixed_effect_cols = fixed_effect_cols
-        )
+    groups <- if (fit_scope == "env_facet") unique(as.character(env_data$.Baseline_Group)) else "All"
+    for (baseline_group in groups) {
+      group_data <- if (fit_scope == "env_facet") {
+        droplevels(env_data[as.character(env_data$.Baseline_Group) == baseline_group, ])
       } else {
-        .lr_fit_predecessor_lme4(
-          env_data = env_data,
-          trait = trait,
-          prev_gen_col = prev_gen_col,
-          curr_gen_col = curr_gen_col,
-          spatial_cols = spatial_cols,
-          baseline_col = baseline_col,
-          fixed_effect_cols = fixed_effect_cols
-        )
+        env_data
       }
-    }, error = function(e) {
-      if (method == "SpATS" && requireNamespace("lme4", quietly = TRUE)) {
-        warning(paste(
-          "SpATS predecessor model failed for", env,
-          "and will fall back to lme4:",
-          e$message
-        ))
-        tryCatch({
-          .lr_fit_predecessor_lme4(
-            env_data = env_data,
+      if (nrow(group_data) == 0) next
+
+      group_diag <- .lr_predecessor_group_diagnostics(
+        env_data = group_data,
+        trait = trait,
+        prev_gen_col = prev_gen_col,
+        curr_gen_col = curr_gen_col,
+        combo_col = combo_col
+      )
+      group_diag$Environment <- env
+      group_diag$Baseline_Group <- if (fit_scope == "env_facet") baseline_group else "All"
+
+      fit <- tryCatch({
+        if (method == "SpATS") {
+          .lr_fit_predecessor_spats(
+            env_data = group_data,
             trait = trait,
             prev_gen_col = prev_gen_col,
             curr_gen_col = curr_gen_col,
+            combo_col = combo_col,
             spatial_cols = spatial_cols,
             baseline_col = baseline_col,
             fixed_effect_cols = fixed_effect_cols
           )
-        }, error = function(e2) {
-          warning(paste("Predecessor model failed for", env, ":", e2$message))
+        } else {
+          .lr_fit_predecessor_lme4(
+            env_data = group_data,
+            trait = trait,
+            prev_gen_col = prev_gen_col,
+            curr_gen_col = curr_gen_col,
+            combo_col = combo_col,
+            spatial_cols = spatial_cols,
+            baseline_col = baseline_col,
+            fixed_effect_cols = fixed_effect_cols
+          )
+        }
+      }, error = function(e) {
+        if (method == "SpATS" && requireNamespace("lme4", quietly = TRUE)) {
+          warning(paste(
+            "SpATS predecessor model failed for", env, baseline_group,
+            "and will fall back to lme4:",
+            e$message
+          ))
+          tryCatch({
+            .lr_fit_predecessor_lme4(
+              env_data = group_data,
+              trait = trait,
+              prev_gen_col = prev_gen_col,
+              curr_gen_col = curr_gen_col,
+              combo_col = combo_col,
+              spatial_cols = spatial_cols,
+              baseline_col = baseline_col,
+              fixed_effect_cols = fixed_effect_cols
+            )
+          }, error = function(e2) {
+            warning(paste("Predecessor model failed for", env, baseline_group, ":", e2$message))
+            NULL
+          })
+        } else {
+          warning(paste("Predecessor model failed for", env, baseline_group, ":", e$message))
           NULL
-        })
-      } else {
-        warning(paste("Predecessor model failed for", env, ":", e$message))
-        NULL
+        }
+      })
+
+      if (is.null(fit)) {
+        group_diag$Status <- "model_failed"
+        diagnostics_list[[paste(env, baseline_group, "diagnostic", sep = "::")]] <- group_diag
+        next
       }
-    })
 
-    if (is.null(fit)) next
+      legacy_df <- fit$legacy_values
+      legacy_df$Environment <- env
+      legacy_df$Trait <- trait
+      legacy_df$Method <- method
+      legacy_df$Fit_Scope <- fit_scope
+      legacy_df$Corrected_Mean_SE <- legacy_df$SE
+      legacy_df$Legacy_Value_SE <- NA_real_
+      group_diag$Status <- "fit"
+      group_diag$Model_Status <- "fit"
+      group_diag$Residual_Variance <- .lr_model_residual_variance(fit$model)
+      group_diag$SE_Min <- .lr_safe_min(legacy_df$SE)
+      group_diag$SE_Median <- .lr_safe_median(legacy_df$SE)
+      group_diag$SE_Max <- .lr_safe_max(legacy_df$SE)
+      group_diag$Network_Correction_Min <- .lr_safe_min(legacy_df$Network_Correction)
+      group_diag$Network_Correction_Median <- .lr_safe_median(legacy_df$Network_Correction)
+      group_diag$Network_Correction_Max <- .lr_safe_max(legacy_df$Network_Correction)
 
-    legacy_df <- fit$legacy_values
-    legacy_df$Environment <- env
-    legacy_df$Trait <- trait
-    legacy_df$Method <- method
-    legacy_df <- legacy_df[order(legacy_df$Legacy_Value, decreasing = TRUE), ]
-    legacy_df$Rank <- seq_len(nrow(legacy_df))
-
-    results_list[[as.character(env)]] <- legacy_df
-    model_list[[as.character(env)]] <- fit$model
+      result_key <- paste(env, baseline_group, sep = "::")
+      results_list[[result_key]] <- legacy_df
+      model_list[[result_key]] <- fit$model
+      diagnostics_list[[paste(env, baseline_group, "diagnostic", sep = "::")]] <- group_diag
+    }
   }
 
   final_df <- dplyr::bind_rows(results_list)
+  diagnostics_df <- dplyr::bind_rows(diagnostics_list)
+  if (nrow(final_df) > 0) {
+    final_df <- final_df |>
+      dplyr::group_by(.data[["Environment"]]) |>
+      dplyr::mutate(
+        Legacy_Value_Global = .data[["Corrected_Mean"]] - mean(.data[["Corrected_Mean"]], na.rm = TRUE),
+        Legacy_Pct_Global = (.data[["Legacy_Value_Global"]] / mean(.data[["Corrected_Mean"]], na.rm = TRUE)) * 100
+      ) |>
+      dplyr::ungroup() |>
+      dplyr::group_by(.data[["Environment"]], .data[["Trait"]]) |>
+      dplyr::mutate(Confidence_Class = .lr_confidence_class(.data[["SE"]])) |>
+      dplyr::ungroup() |>
+      dplyr::arrange(.data[["Environment"]], dplyr::desc(.data[["Legacy_Value"]]))
+    final_df$Rank <- ave(
+      -final_df$Legacy_Value,
+      final_df$Environment,
+      final_df$Trait,
+      FUN = function(x) rank(x, ties.method = "first")
+    )
+  }
 
   p <- .lr_plot_predecessor(final_df, trait)
   ranked_p <- .lr_plot_predecessor_ranked(final_df, trait)
@@ -139,13 +229,16 @@ model_predecessor_effect <- function(data,
     ranked_plot = ranked_p,
     gwas_plot = ranked_p,
     correction_plot = correction_p,
+    diagnostics = diagnostics_df,
+    design_audit = design_audit,
     models = model_list,
     settings = list(
       trait = trait,
       method = method,
+      fit_scope = fit_scope,
       include_checks = include_checks,
       baseline_col = baseline_col,
-      question = "Which lentil genotypes leave better average wheat conditions?"
+      question = "Which lentil genotypes are associated with higher or lower following-wheat performance relative to the other lentils tested within the same ENV x Facet network?"
     )
   )
 }
@@ -254,6 +347,10 @@ plot_predecessor_gwas_phenotypes <- function(x, trait = NULL, n = NULL, show_se 
 #' @param include_checks Logical. Include check plots in the model?
 #' @param min_combo_reps Minimum observed plots per lentil-wheat pair to label a
 #'   pair as fully supported in the output.
+#' @param compute_compatibility_pct Logical. Compute percent compatibility?
+#' @param pct_min_denominator Minimum absolute additive mean used for stable
+#'   percent calculations.
+#' @param validate_design Logical. Run local factorial design diagnostics?
 #'
 #' @return A list with pair compatibility values, plots, fitted models, and settings.
 #' @export
@@ -270,7 +367,10 @@ model_pair_compatibility <- function(data,
                                      type_col = "Type",
                                      check_values = "Check",
                                      include_checks = FALSE,
-                                     min_combo_reps = 2) {
+                                     min_combo_reps = 2,
+                                     compute_compatibility_pct = TRUE,
+                                     pct_min_denominator = 1e-6,
+                                     validate_design = TRUE) {
 
   if (!requireNamespace("lme4", quietly = TRUE)) {
     stop("Package 'lme4' is required for pair compatibility models.")
@@ -293,6 +393,25 @@ model_pair_compatibility <- function(data,
   results_list <- list()
   model_list <- list()
   diagnostics_list <- list()
+  design_audit <- NULL
+  if (validate_design && !is.null(baseline_col) && baseline_col %in% names(data) && combo_col %in% names(data)) {
+    design_audit <- audit_rotation_design(
+      data = data,
+      env_col = env_col,
+      facet_col = baseline_col,
+      lentil_col = prev_gen_col,
+      wheat_col = curr_gen_col,
+      combo_col = combo_col
+    )
+    if (!isTRUE(design_audit$design_ok)) {
+      warning(
+        "Rotation design audit found one or more incomplete or unexpected ENV x Facet networks. ",
+        "Inspect result$design_audit and result$diagnostics before interpreting pair compatibility.",
+        call. = FALSE
+      )
+    }
+  }
+
   envs <- unique(data[[env_col]])
 
   for (env in envs) {
@@ -332,14 +451,20 @@ model_pair_compatibility <- function(data,
           spatial_cols = spatial_cols,
           baseline_col = baseline_col,
           fixed_effect_cols = fixed_effect_cols,
-          random_effect_cols = random_effect_cols
+          random_effect_cols = random_effect_cols,
+          compute_compatibility_pct = compute_compatibility_pct,
+          pct_min_denominator = pct_min_denominator
         )
       }, error = function(e) {
         warning(paste("Pair compatibility model failed for", env, baseline_group, ":", e$message))
         NULL
       })
 
-      if (is.null(fit)) next
+      if (is.null(fit)) {
+        group_diag$Status <- "model_failed"
+        diagnostics_list[[paste(env, baseline_group, "diagnostic", sep = "::")]] <- group_diag
+        next
+      }
 
       pair_df <- fit$compatibility
       pair_df$Environment <- env
@@ -348,6 +473,8 @@ model_pair_compatibility <- function(data,
       pair_df$Model_Singular <- fit$diagnostics$Model_Singular
       pair_df$Combo_Variance <- fit$diagnostics$Combo_Variance
       pair_df$Residual_Variance <- fit$diagnostics$Residual_Variance
+      pair_df$Local_Factorial_Complete <- fit$diagnostics$Local_Factorial_Complete
+      pair_df$Expected_10x10 <- fit$diagnostics$Expected_10x10
       pair_df <- pair_df[order(pair_df$Compatibility_Value, decreasing = TRUE), ]
       pair_df$Rank <- seq_len(nrow(pair_df))
 
@@ -371,12 +498,15 @@ model_pair_compatibility <- function(data,
     plot = p,
     heatmap = p,
     ranked_plot = ranked_p,
+    design_audit = design_audit,
     models = model_list,
     settings = list(
       trait = trait,
       include_checks = include_checks,
       baseline_col = baseline_col,
       min_combo_reps = min_combo_reps,
+      compute_compatibility_pct = compute_compatibility_pct,
+      pct_min_denominator = pct_min_denominator,
       question = "Which lentil-wheat genotype pairs are specifically compatible?"
     )
   )
@@ -447,6 +577,7 @@ plot_pair_compatibility_heatmap <- function(x,
     ggplot2::labs(
       title = "Lentil-Wheat Pair Compatibility",
       subtitle = paste("Showing only ENV x Facet groups with detectable pair-specific signal", if (!is.null(trait)) paste("| trait:", trait) else ""),
+      caption = "Compatibility_Value is a pair-specific deviation within the observed local ENV x Facet network; unobserved global 100 x 100 combinations are not created.",
       x = "Current wheat genotype",
       y = "Previous lentil genotype"
     ) +
@@ -571,6 +702,7 @@ plot_pair_compatibility_ranked <- function(x,
     ggplot2::labs(
       title = "Top Lentil-Wheat Pair Compatibility Values",
       subtitle = paste("Showing only ENV x Facet groups with detectable pair-specific signal", if (!is.null(trait)) paste("| trait:", trait) else ""),
+      caption = "Rankings are within observed ENV x Facet networks. Compatibility_Value is preferred over Compatibility_Pct for centered, ordinal, or near-zero traits.",
       x = "Observed lentil-wheat pair",
       y = "Pair effect beyond additive lentil and wheat effects"
     )
@@ -650,9 +782,6 @@ plot_pair_compatibility_ranked <- function(x,
   if (!"Previous_Genotype" %in% names(out) && "Genotype" %in% names(out)) {
     out$Previous_Genotype <- out$Genotype
   }
-  if (!"Legacy_Value" %in% names(out) && "Predecessor_Phenotype" %in% names(out)) {
-    out$Legacy_Value <- out$Predecessor_Phenotype
-  }
   if (!"SE" %in% names(out)) out$SE <- NA_real_
   if (!"Baseline_Group" %in% names(out)) out$Baseline_Group <- "All"
   out
@@ -690,6 +819,7 @@ plot_pair_compatibility_ranked <- function(x,
                                       trait,
                                       prev_gen_col,
                                       curr_gen_col,
+                                      combo_col,
                                       spatial_cols,
                                       baseline_col,
                                       fixed_effect_cols) {
@@ -755,6 +885,7 @@ plot_pair_compatibility_ranked <- function(x,
       Raw_Mean = mean(.data[[trait]], na.rm = TRUE),
       N_Plots = dplyr::n(),
       N_Wheat_Partners = dplyr::n_distinct(.data[[curr_gen_col]]),
+      N_Observed_Combos = if (combo_col %in% names(env_data)) dplyr::n_distinct(.data[[combo_col]]) else NA_integer_,
       Baseline_Group = .lr_summarize_baseline(.data[[".Baseline_Group"]]),
       N_Baseline_Groups = .lr_count_baseline(.data[[".Baseline_Group"]]),
       .groups = "drop"
@@ -782,6 +913,7 @@ plot_pair_compatibility_ranked <- function(x,
                                      trait,
                                      prev_gen_col,
                                      curr_gen_col,
+                                     combo_col,
                                      spatial_cols,
                                      baseline_col,
                                      fixed_effect_cols) {
@@ -801,6 +933,7 @@ plot_pair_compatibility_ranked <- function(x,
       Raw_Mean = mean(.data[[trait]], na.rm = TRUE),
       N_Plots = dplyr::n(),
       N_Wheat_Partners = dplyr::n_distinct(.data[[curr_gen_col]]),
+      N_Observed_Combos = if (combo_col %in% names(env_data)) dplyr::n_distinct(.data[[combo_col]]) else NA_integer_,
       Baseline_Group = .lr_summarize_baseline(.data[[".Baseline_Group"]]),
       N_Baseline_Groups = .lr_count_baseline(.data[[".Baseline_Group"]]),
       .groups = "drop"
@@ -832,7 +965,9 @@ plot_pair_compatibility_ranked <- function(x,
                               spatial_cols,
                               baseline_col,
                               fixed_effect_cols,
-                              random_effect_cols) {
+                              random_effect_cols,
+                              compute_compatibility_pct,
+                              pct_min_denominator) {
   fixed_effect_cols <- .lr_existing_cols(env_data, fixed_effect_cols)
   for (col in fixed_effect_cols) env_data[[col]] <- as.factor(env_data[[col]])
 
@@ -861,6 +996,7 @@ plot_pair_compatibility_ranked <- function(x,
   if (length(combo_var) == 0) combo_var <- NA_real_
   model_diag$Combo_Variance <- combo_var[[1]]
   model_diag$Residual_Variance <- stats::sigma(m)^2
+  model_diag$Status <- .lr_pair_status(model_diag)
 
   combo_re <- lme4::ranef(m, condVar = TRUE)[[combo_col]]
   post_var <- attr(combo_re, "postVar")
@@ -875,7 +1011,9 @@ plot_pair_compatibility_ranked <- function(x,
   )
 
   env_data$Expected_Additive <- predict(m, re.form = NA)
-  env_data$Predicted_With_Pair <- predict(m)
+  env_data$Conditional_Predicted <- predict(m)
+  env_data$Compatibility_Value <- combo_effects$Compatibility_Value[match(as.character(env_data[[combo_col]]), combo_effects$Combo)]
+  env_data$Marginal_Predicted_With_Pair <- env_data$Expected_Additive + env_data$Compatibility_Value
 
   pair_stats <- env_data |>
     dplyr::group_by(.data[[combo_col]]) |>
@@ -885,7 +1023,8 @@ plot_pair_compatibility_ranked <- function(x,
       Baseline_Group = .lr_summarize_baseline(.data[[".Baseline_Group"]]),
       Raw_Mean = mean(.data[[trait]], na.rm = TRUE),
       Expected_Additive_Mean = mean(Expected_Additive, na.rm = TRUE),
-      Corrected_Pair_Mean = mean(Predicted_With_Pair, na.rm = TRUE),
+      Conditional_Predicted_Mean = mean(Conditional_Predicted, na.rm = TRUE),
+      Marginal_Corrected_Pair_Mean = mean(Marginal_Predicted_With_Pair, na.rm = TRUE),
       N_Plots = dplyr::n(),
       .groups = "drop"
     )
@@ -894,8 +1033,25 @@ plot_pair_compatibility_ranked <- function(x,
   compatibility <- pair_stats |>
     dplyr::left_join(combo_effects, by = "Combo") |>
     dplyr::mutate(
-      Compatibility_Pct = (Compatibility_Value / Expected_Additive_Mean) * 100
+      Corrected_Pair_Mean = .data[["Marginal_Corrected_Pair_Mean"]],
+      Compatibility_Pct = if (compute_compatibility_pct) {
+        ifelse(
+          abs(.data[["Expected_Additive_Mean"]]) < pct_min_denominator,
+          NA_real_,
+          (.data[["Compatibility_Value"]] / .data[["Expected_Additive_Mean"]]) * 100
+        )
+      } else {
+        NA_real_
+      }
     )
+
+  if (compute_compatibility_pct && any(abs(compatibility$Expected_Additive_Mean) < pct_min_denominator, na.rm = TRUE)) {
+    warning(
+      "Compatibility_Pct can be unstable when Expected_Additive_Mean is near zero. ",
+      "Use Compatibility_Value as the primary output for centered, ordinal, or near-zero traits.",
+      call. = FALSE
+    )
+  }
 
   list(compatibility = compatibility, model = m, diagnostics = model_diag)
 }
@@ -907,14 +1063,24 @@ plot_pair_compatibility_ranked <- function(x,
                                        combo_col) {
   combo_counts <- table(env_data[[combo_col]])
   if (length(combo_counts) == 0) combo_counts <- 0L
+  n_previous <- dplyr::n_distinct(env_data[[prev_gen_col]])
+  n_current <- dplyr::n_distinct(env_data[[curr_gen_col]])
+  n_combos <- dplyr::n_distinct(env_data[[combo_col]])
+  expected_combos <- n_previous * n_current
+  min_reps <- min(as.integer(combo_counts), na.rm = TRUE)
 
   data.frame(
     Trait = trait,
     N_Plots = nrow(env_data),
-    N_Previous_Genotypes = dplyr::n_distinct(env_data[[prev_gen_col]]),
-    N_Current_Genotypes = dplyr::n_distinct(env_data[[curr_gen_col]]),
-    N_Combos = dplyr::n_distinct(env_data[[combo_col]]),
-    Min_Reps_Per_Combo = min(as.integer(combo_counts), na.rm = TRUE),
+    N_Previous_Genotypes = n_previous,
+    N_Current_Genotypes = n_current,
+    N_Combos = n_combos,
+    Expected_Combos = expected_combos,
+    Observed_Combos = n_combos,
+    Missing_Combos = expected_combos - n_combos,
+    Local_Factorial_Complete = n_combos == expected_combos,
+    Expected_10x10 = n_previous == 10 && n_current == 10 && n_combos == 100,
+    Min_Reps_Per_Combo = min_reps,
     Median_Reps_Per_Combo = stats::median(as.integer(combo_counts), na.rm = TRUE),
     Max_Reps_Per_Combo = max(as.integer(combo_counts), na.rm = TRUE),
     N_Single_Rep_Combos = sum(as.integer(combo_counts) < 2, na.rm = TRUE),
@@ -924,6 +1090,86 @@ plot_pair_compatibility_ranked <- function(x,
     Combo_Variance = NA_real_,
     Residual_Variance = NA_real_
   )
+}
+
+.lr_predecessor_group_diagnostics <- function(env_data,
+                                              trait,
+                                              prev_gen_col,
+                                              curr_gen_col,
+                                              combo_col) {
+  combo_counts <- if (combo_col %in% names(env_data)) table(env_data[[combo_col]]) else integer(0)
+  n_previous <- dplyr::n_distinct(env_data[[prev_gen_col]])
+  n_current <- dplyr::n_distinct(env_data[[curr_gen_col]])
+  n_combos <- if (combo_col %in% names(env_data)) dplyr::n_distinct(env_data[[combo_col]]) else NA_integer_
+  expected_combos <- n_previous * n_current
+  min_reps <- if (length(combo_counts) > 0) min(as.integer(combo_counts), na.rm = TRUE) else NA_integer_
+
+  data.frame(
+    Trait = trait,
+    N_Plots = nrow(env_data),
+    N_Previous_Genotypes = n_previous,
+    N_Current_Genotypes = n_current,
+    N_Combos = n_combos,
+    N_Observed_Combos = n_combos,
+    Expected_Combos = expected_combos,
+    Missing_Combos = expected_combos - n_combos,
+    Local_Factorial_Complete = n_combos == expected_combos,
+    Expected_10x10 = n_previous == 10 && n_current == 10 && n_combos == 100,
+    Min_Reps_Per_Combo = min_reps,
+    Status = "not_fit",
+    Model_Status = NA_character_,
+    Residual_Variance = NA_real_,
+    SE_Min = NA_real_,
+    SE_Median = NA_real_,
+    SE_Max = NA_real_,
+    Network_Correction_Min = NA_real_,
+    Network_Correction_Median = NA_real_,
+    Network_Correction_Max = NA_real_
+  )
+}
+
+.lr_pair_status <- function(diag) {
+  status <- character(0)
+  if (!isTRUE(diag$Local_Factorial_Complete)) status <- c(status, "incomplete_local_factorial")
+  if (isTRUE(diag$Expected_10x10)) status <- c(status, "complete_10x10")
+  if (!is.na(diag$Min_Reps_Per_Combo) && diag$Min_Reps_Per_Combo < 2) status <- c(status, "low_replication")
+  if (isTRUE(diag$Model_Singular)) status <- c(status, "singular_fit")
+  if (!is.na(diag$Combo_Variance) && diag$Combo_Variance <= 0) status <- c(status, "zero_combo_variance")
+  if (length(status) == 0) status <- "fit"
+  paste(unique(status), collapse = ";")
+}
+
+.lr_model_residual_variance <- function(model) {
+  if (is.null(model)) return(NA_real_)
+  if (inherits(model, "merMod")) return(stats::sigma(model)^2)
+  if (!is.null(model$psi)) return(model$psi[1])
+  NA_real_
+}
+
+.lr_confidence_class <- function(se) {
+  out <- rep("unknown", length(se))
+  ok <- !is.na(se)
+  if (!any(ok)) return(out)
+  q <- stats::quantile(se[ok], probs = c(0.33, 0.66), na.rm = TRUE, names = FALSE)
+  out[ok & se <= q[[1]]] <- "high"
+  out[ok & se > q[[1]] & se <= q[[2]]] <- "moderate"
+  out[ok & se > q[[2]]] <- "low"
+  out
+}
+
+.lr_safe_min <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  min(x, na.rm = TRUE)
+}
+
+.lr_safe_median <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  stats::median(x, na.rm = TRUE)
+}
+
+.lr_safe_max <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  max(x, na.rm = TRUE)
 }
 
 .lr_plot_predecessor <- function(df, trait, show_se = FALSE) {
@@ -967,7 +1213,8 @@ plot_pair_compatibility_ranked <- function(x,
     ggplot2::theme_minimal() +
     ggplot2::labs(
       title = "Average Lentil Predecessor Effects",
-      subtitle = paste("Wheat trait:", trait, "| deviation from ENV x wheat-facet mean"),
+      subtitle = paste("Wheat trait:", trait, "| within ENV x Facet deviation"),
+      caption = "Legacy_Value is centered within ENV x Facet. Cross-facet rankings compare within-facet deviations, not absolute performance in a fully connected 100 x 100 factorial.",
       x = "Previous lentil genotype",
       y = "Effect on wheat performance vs facet mean"
     )
@@ -1026,6 +1273,7 @@ plot_pair_compatibility_ranked <- function(x,
     ggplot2::labs(
       title = "GWAS-Ready Lentil Legacy Values",
       subtitle = paste("Facet-corrected wheat legacy value", if (!is.null(trait)) paste("| trait:", trait) else ""),
+      caption = "Legacy_Value is centered within ENV x Facet. Rankings across all lentils compare within-facet deviations, not absolute performance across a fully connected 100 x 100 factorial.",
       x = "Previous lentil genotype",
       y = "Facet-corrected Legacy_Value",
       color = "Wheat-partner facet"

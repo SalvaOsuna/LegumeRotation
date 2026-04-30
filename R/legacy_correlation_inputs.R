@@ -267,6 +267,13 @@ prepare_wheat_legacy_targets <- function(...,
   out <- vector("list", length(legacy_list))
   for (i in seq_along(legacy_list)) {
     x <- legacy_list[[i]]
+    if (is.list(x) && "design_audit" %in% names(x) && !is.null(x$design_audit) && !isTRUE(x$design_audit$design_ok)) {
+      warning(
+        "Design audit for wheat legacy target '", target_names[[i]], "' is not fully OK. ",
+        "Inspect the predecessor model design_audit before using correlations.",
+        call. = FALSE
+      )
+    }
     df <- if (is.list(x) &&
               "legacy_values" %in% names(x) &&
               phenotype_col %in% names(x$legacy_values)) {
@@ -285,6 +292,16 @@ prepare_wheat_legacy_targets <- function(...,
     }
     .lr_check_columns(df, c("Genotype", "Environment", phenotype_col))
     if (!"N_Plots" %in% names(df)) df$N_Plots <- NA_integer_
+    if (!"SE" %in% names(df) && "Corrected_Mean_SE" %in% names(df)) df$SE <- df$Corrected_Mean_SE
+    if (!"SE" %in% names(df)) df$SE <- NA_real_
+    if (!"Reliability" %in% names(df)) df$Reliability <- NA_real_
+    df$SE <- suppressWarnings(as.numeric(df$SE))
+    df$Reliability <- suppressWarnings(as.numeric(df$Reliability))
+    df$Weight <- dplyr::case_when(
+      !is.na(df$Reliability) ~ df$Reliability,
+      !is.na(df$SE) & df$SE > 0 ~ 1 / (df$SE^2),
+      TRUE ~ NA_real_
+    )
 
     out[[i]] <- df |>
       dplyr::transmute(
@@ -293,7 +310,10 @@ prepare_wheat_legacy_targets <- function(...,
         Trait = paste0(prefix, target_names[[i]]),
         Predicted = .data[[phenotype_col]],
         Source = "wheat_legacy",
-        N_Observations = .data[["N_Plots"]]
+        N_Observations = .data[["N_Plots"]],
+        SE = .data[["SE"]],
+        Reliability = .data[["Reliability"]],
+        Weight = .data[["Weight"]]
       )
   }
 
