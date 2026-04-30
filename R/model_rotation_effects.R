@@ -14,6 +14,10 @@
 #' @param baseline_col Network/facet column used to define the comparison
 #'   baseline for legacy values.
 #' @param fixed_effect_cols Optional additional fixed design/network terms.
+#'   For rotation predecessor models this should usually be `"Rep_combo"`,
+#'   because the same lentil-wheat combo is replicated within environment.
+#'   Avoid `"Rep_gen"`, which indexes genotype-level replication and is used
+#'   for independent genotype performance models.
 #' @param type_col Optional column used to remove checks.
 #' @param check_values Values in `type_col` to remove when `include_checks = FALSE`.
 #' @param include_checks Logical. Include check plots in the model?
@@ -43,6 +47,7 @@ model_predecessor_effect <- function(data,
 
   method <- match.arg(method)
   fit_scope <- match.arg(fit_scope)
+  .lr_warn_rotation_rep_terms(fixed_effect_cols)
 
   data <- .lr_prepare_rotation_data(
     data = data,
@@ -339,8 +344,11 @@ plot_predecessor_gwas_phenotypes <- function(x, trait = NULL, n = NULL, show_se 
 #' @param combo_col Lentil-wheat pair identifier. Created if missing.
 #' @param spatial_cols Column names for row and column position.
 #' @param baseline_col Optional network/facet column added to output and plots.
-#' @param fixed_effect_cols Optional additional fixed terms. Avoid terms that
-#'   are redundant with lentil or wheat genotype.
+#' @param fixed_effect_cols Optional additional fixed terms. The default
+#'   `"Rep_combo"` adjusts for the two replicated plots of the same observed
+#'   lentil-wheat combo within environment. Avoid `"Rep_gen"` in rotation
+#'   models because it indexes genotype-level replication, not combo-level
+#'   replication.
 #' @param random_effect_cols Optional design random effects, for example `"Block"`.
 #' @param type_col Optional column used to remove checks.
 #' @param check_values Values in `type_col` to remove when `include_checks = FALSE`.
@@ -362,7 +370,7 @@ model_pair_compatibility <- function(data,
                                      combo_col = "Combo",
                                      spatial_cols = c("Row", "Col"),
                                      baseline_col = "Facet",
-                                     fixed_effect_cols = character(0),
+                                     fixed_effect_cols = c("Rep_combo"),
                                      random_effect_cols = c("Block"),
                                      type_col = "Type",
                                      check_values = "Check",
@@ -375,6 +383,7 @@ model_pair_compatibility <- function(data,
   if (!requireNamespace("lme4", quietly = TRUE)) {
     stop("Package 'lme4' is required for pair compatibility models.")
   }
+  .lr_warn_rotation_rep_terms(fixed_effect_cols, random_effect_cols)
 
   data <- .lr_prepare_rotation_data(
     data = data,
@@ -504,6 +513,7 @@ model_pair_compatibility <- function(data,
       trait = trait,
       include_checks = include_checks,
       baseline_col = baseline_col,
+      fixed_effect_cols = fixed_effect_cols,
       min_combo_reps = min_combo_reps,
       compute_compatibility_pct = compute_compatibility_pct,
       pct_min_denominator = pct_min_denominator,
@@ -794,6 +804,19 @@ plot_pair_compatibility_ranked <- function(x,
   x <- x[ok]
   if (all(is.na(w)) || sum(w, na.rm = TRUE) <= 0) return(mean(x, na.rm = TRUE))
   stats::weighted.mean(x, w = w, na.rm = TRUE)
+}
+
+.lr_warn_rotation_rep_terms <- function(fixed_effect_cols = character(0),
+                                        random_effect_cols = character(0)) {
+  rep_terms <- c(fixed_effect_cols, random_effect_cols)
+  if ("Rep_gen" %in% rep_terms) {
+    warning(
+      "Rep_gen indexes genotype-level replication and is intended for independent genotype performance models. ",
+      "Rotation predecessor and pair-compatibility models should usually use Rep_combo, ",
+      "because the same lentil-wheat Combo is replicated within ENV.",
+      call. = FALSE
+    )
+  }
 }
 
 .lr_existing_cols <- function(data, cols) {

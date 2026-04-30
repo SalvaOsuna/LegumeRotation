@@ -411,9 +411,9 @@ full 100 x 100 factorial, but locally complete within each facet.</p>
 are paired with L001, L011, L021, L031, L041, L051, L061, L071, L081,
 and L091, giving 100 observed lentil-wheat combinations. The second
 wheat facet contains W011-W020 and is paired with L002, L012, L022,
-L032, L042, L052, L062, L072, L082, and L092. This logic continues
-until the final facet, which contains W091-W100 paired with L010, L020,
-L030, L040, L050, L060, L070, L080, L090, and L100.</p>
+L032, L042, L052, L062, L072, L082, and L092. This logic continues until
+the final facet, which contains W091-W100 paired with L010, L020, L030,
+L040, L050, L060, L070, L080, L090, and L100.</p>
 <p>Thus, <code>Facet</code> defines a local lentil-wheat network. Legacy
 effects should primarily be interpreted within ENV x Facet, because
 lentils in different facets were not evaluated against the same wheat
@@ -438,6 +438,26 @@ Facet 10: W091-W100 paired with L010, L020, L030, ..., L100</code></pre>
 <p>Wheat membership follows blocks of ten: W001-W010 are facet 1,
 W011-W020 are facet 2, and so on through W091-W100 in facet 10.</p>
 </div>
+<div id="replication-terms-rep_gen-vs-rep_combo" class="section level3">
+<h3>Replication Terms: Rep_gen vs Rep_combo</h3>
+<p>The dataset contains two replicate identifiers that should not be
+used interchangeably:</p>
+<ul>
+<li><code>Rep_gen</code> is the genotype-level replicate. It is
+appropriate for independent lentil or wheat genotype performance models,
+where the same genotype is represented many times within an
+environment.</li>
+<li><code>Rep_combo</code> is the lentil x wheat combo replicate. It is
+the correct replicate design term for rotation analyses, because each
+observed <code>Combo</code> is replicated twice within an
+environment.</li>
+</ul>
+<p>For the rotation predecessor and pair-compatibility models, use
+<code>Rep_combo</code> as the replicate design term. Do not use
+<code>Rep_gen</code> in these rotation models, because it describes
+genotype-level replication rather than the two replicated plots of the
+same observed lentil-wheat combination.</p>
+</div>
 <div id="why-legacy-effects-are-interpreted-within-env-x-facet" class="section level3">
 <h3>Why Legacy Effects Are Interpreted Within ENV x Facet</h3>
 <p>Because each facet has its own wheat partner set,
@@ -445,7 +465,8 @@ W011-W020 are facet 2, and so on through W091-W100 in facet 10.</p>
 lentil genotype against the other lentils tested with the same 10 wheat
 genotypes in the same environment. A cross-facet ranking of
 <code>Legacy_Value</code> is therefore a ranking of within-facet
-deviations, not a ranking from a fully connected 100 x 100 factorial.</p>
+deviations, not a ranking from a fully connected 100 x 100
+factorial.</p>
 </div>
 </div>
 <div id="data-layers" class="section level2">
@@ -513,15 +534,19 @@ experiment. This creates a globally incomplete genotype network.
 However, the design is locally complete within each ENV x Facet: the 10
 lentils in that facet are each evaluated against the same 10 wheat
 genotypes.</p>
-<p>This is why wheat genotype and facet structure must be included in`n the analysis. Within a facet, wheat genotype correction compares lentils`n against a common local wheat-partner set. Across facets, raw or`n corrected means should not be interpreted as if every lentil had been`n tested against all 100 wheat genotypes.</p>
+<p>This is why wheat genotype and facet structure must be included in
+the analysis. Within a facet, wheat genotype correction compares lentils
+against a common local wheat-partner set. Across facets, raw or
+corrected means should not be interpreted as if every lentil had been
+tested against all 100 wheat genotypes.</p>
 </div>
 <div id="facet-specific-baselines" class="section level3">
 <h3>3. Facet-Specific Baselines</h3>
 <p>Because the pairing network is structured by <code>Facet</code>,
 comparing every lentil against the full environment mean can be
 misleading. A lentil in the W001-W010 facet should be compared against
-the expected performance of that facet, not necessarily against the mean
-of all 100 wheat genotypes.</p>
+the expected performance of that ENV x Facet network, not against the
+mean of all 100 wheat genotypes.</p>
 <p>The current preferred predecessor-effect output therefore
 reports:</p>
 <p><span class="math display">\[
@@ -562,6 +587,7 @@ should be checked against the intended structured incomplete factorial
 design.</p>
 <div id="check-local-10-x-10-completeness" class="section level3">
 <h3>Check Local 10 x 10 Completeness</h3>
+<p>Use:</p>
 <pre class="r"><code>design_summary &lt;- check_rotation_design(
   data = wheat_treatment,
   env_col = &quot;ENV&quot;,
@@ -570,24 +596,53 @@ design.</p>
   wheat_col = &quot;Wheat&quot;,
   combo_col = &quot;Combo&quot;
 )</code></pre>
-<p>For a clean treatment design, each ENV x Facet should usually report
-10 previous genotypes, 10 current genotypes, 100 combos, and
-<code>Expected_10x10 = TRUE</code>.</p>
+<p>For a clean treatment design, each ENV x Facet should usually
+report:</p>
+<pre class="text"><code>N_Previous_Genotypes = 10
+N_Current_Genotypes  = 10
+N_Combos             = 100
+Expected_10x10       = TRUE</code></pre>
+<p>The helper also reports <code>Expected_Combos</code>,
+<code>Missing_Combos</code>, and
+<code>Is_Complete_Local_Factorial</code>. These diagnostics guard
+against accidental missing combinations, extra check plots, or
+incorrectly assigned facets.</p>
 </div>
 <div id="check-lentil-to-facet-assignment" class="section level3">
 <h3>Check Lentil-to-Facet Assignment</h3>
-<pre class="r"><code>lentil_assignment &lt;- check_lentil_facet_assignment(wheat_treatment)</code></pre>
+<p>Use:</p>
+<pre class="r"><code>lentil_assignment &lt;- check_lentil_facet_assignment(
+  data = wheat_treatment,
+  lentil_col = &quot;Lentil&quot;,
+  facet_col = &quot;Facet&quot;
+)</code></pre>
+<p>The expected lentil pattern is:</p>
+<pre class="text"><code>Facet 1:  L001, L011, L021, ..., L091
+Facet 2:  L002, L012, L022, ..., L092
+...
+Facet 10: L010, L020, L030, ..., L100</code></pre>
 <p>The <code>Facet_Assignment_OK</code> column should be
 <code>TRUE</code> for all treatment genotypes.</p>
 </div>
 <div id="check-wheat-to-facet-assignment" class="section level3">
 <h3>Check Wheat-to-Facet Assignment</h3>
-<pre class="r"><code>wheat_assignment &lt;- check_wheat_facet_assignment(wheat_treatment)</code></pre>
+<p>Use:</p>
+<pre class="r"><code>wheat_assignment &lt;- check_wheat_facet_assignment(
+  data = wheat_treatment,
+  wheat_col = &quot;Wheat&quot;,
+  facet_col = &quot;Facet&quot;
+)</code></pre>
+<p>The expected wheat pattern is:</p>
+<pre class="text"><code>Facet 1:  W001-W010
+Facet 2:  W011-W020
+...
+Facet 10: W091-W100</code></pre>
 <p>The <code>Facet_Assignment_OK</code> column should be
 <code>TRUE</code> for all treatment genotypes.</p>
 </div>
 <div id="global-design-audit" class="section level3">
 <h3>Global Design Audit</h3>
+<p>Use:</p>
 <pre class="r"><code>design_audit &lt;- audit_rotation_design(wheat_treatment)
 design_audit$design_ok
 design_audit$design_summary</code></pre>
@@ -650,9 +705,14 @@ model.</p>
   trait_cols = c(&quot;Y.ADJ&quot;),
   gen_col = &quot;Wheat&quot;,
   env_col = &quot;ENV&quot;,
-  rep_col = &quot;Rep_combo&quot;,
+  rep_col = &quot;Rep_gen&quot;,
   spatial_cols = c(&quot;Row&quot;, &quot;Col&quot;)
 )</code></pre>
+<p>This independent wheat genotype model uses <code>Rep_gen</code>
+because the target is wheat genotype performance and each wheat genotype
+is represented across about 20 plots within an environment. Rotation
+models switch to <code>Rep_combo</code> because their experimental unit
+is the observed lentil-wheat combination, replicated twice.</p>
 </div>
 <div id="insight" class="section level3">
 <h3>Insight</h3>
@@ -671,13 +731,23 @@ model.</p>
 <h2>Predecessor Effect Model</h2>
 <p>The preferred function is:</p>
 <pre class="r"><code>model_predecessor_effect()</code></pre>
+<div id="primary-env-x-facet-model" class="section level3">
+<h3>Primary ENV x Facet Model</h3>
+<p>The primary recommended model is fit within each ENV x Facet network
+by default:</p>
+<pre class="r"><code>model_predecessor_effect(..., fit_scope = &quot;env_facet&quot;)</code></pre>
 <p>Conceptually, the model is:</p>
 <pre class="r"><code>wheat_trait ~ previous_lentil + design terms + wheat genotype random effect + spatial trend</code></pre>
 <p>In the SpATS implementation:</p>
 <pre class="r"><code>Y.ADJ ~ Lentil + Rep_combo + PSANOVA(Row, Col) + random(Wheat)</code></pre>
+<p>Here <code>Rep_combo</code> is the relevant replicate term because
+each lentil-wheat <code>Combo</code> is replicated twice within an
+environment. <code>Rep_gen</code> is not used in this model; it belongs
+to independent genotype performance analyses where the same genotype has
+many replicate plots.</p>
 <p>Mathematically, within each environment:</p>
 <p><span class="math display">\[
-Y_i = \mu_e + L_{e,l(i)} + d_{e,r(i)} + W_{e,w(i)} + f_e(R_i, C_i) +
+Y_i = \mu_e + L_{e,l(i)} + d_{e,q(i)} + W_{e,w(i)} + f_e(R_i, C_i) +
 \varepsilon_i
 \]</span></p>
 <p>where:</p>
@@ -688,8 +758,8 @@ Y_i = \mu_e + L_{e,l(i)} + d_{e,r(i)} + W_{e,w(i)} + f_e(R_i, C_i) +
 <li><code>L_{e,l(i)}</code> is the effect of the previous lentil
 genotype <code>l</code> grown in that plot in Year 1. This is the
 predecessor effect of interest.</li>
-<li><code>d_{e,r(i)}</code> is the fixed design effect, such as
-<code>Rep_combo</code>, for plot <code>i</code>.</li>
+<li><code>d_{e,q(i)}</code> is the fixed combo-replicate design effect,
+usually <code>Rep_combo</code>, for plot <code>i</code>.</li>
 <li><code>W_{e,w(i)}</code> is the random effect of the current wheat
 genotype <code>w</code> in Year 2.</li>
 <li><code>f_e(row_i, col_i)</code> is the spatial field trend for the
@@ -749,6 +819,7 @@ legacy value is calculated relative to the facet baseline:</p>
 \mathrm{Network\_Correction}
 = \mathrm{Corrected\_Mean} - \mathrm{Raw\_Mean}
 \]</span></p>
+</div>
 <div id="example" class="section level3">
 <h3>Example</h3>
 <pre class="r"><code>avg_predecessor_yadj &lt;- model_predecessor_effect(
@@ -789,7 +860,7 @@ raw means.</li>
 <div id="insight-1" class="section level3">
 <h3>Insight</h3>
 <p>This formula answers:</p>
-<pre class="text"><code>Which lentil genotypes leave better or worse wheat-growing conditions within their wheat-facet network?</code></pre>
+<pre class="text"><code>Which lentil genotypes are associated with higher or lower following-wheat performance relative to the other lentils tested within the same ENV x Facet network?</code></pre>
 <p>The main plot shows <code>Legacy_Value</code>, centered on the ENV x
 Facet mean.</p>
 <p>The correction plot shows:</p>
@@ -849,6 +920,26 @@ observations. The <code>legacy_values</code> table has one adjusted
 legacy value per lentil genotype x environment x trait, so a boxplot
 would imply a distribution that is not present in that output.</p>
 </div>
+<div id="secondary-global-sensitivity-model" class="section level3">
+<h3>Secondary Global Sensitivity Model</h3>
+<p>A global environment-level sensitivity model can be requested
+with:</p>
+<pre class="r"><code>model_predecessor_effect(..., fit_scope = &quot;env_global&quot;)</code></pre>
+<p>This fits across the full environment and then centers corrected
+lentil means by facet. It is useful as a sensitivity analysis, but the
+primary interpretation remains the ENV x Facet model because each facet
+is the locally complete 10 x 10 network.</p>
+</div>
+<div id="uncertainty-and-reliability" class="section level3">
+<h3>Uncertainty and Reliability</h3>
+<p>The output keeps <code>SE</code> and <code>Corrected_Mean_SE</code>
+for the adjusted lentil predecessor mean before facet-centering.
+<code>Legacy_Value_SE</code> is retained as <code>NA</code> unless a
+valid centered-contrast SE is available. The output also includes
+<code>Confidence_Class</code>, which summarizes SE into
+<code>high</code>, <code>moderate</code>, <code>low</code>, or
+<code>unknown</code> categories for diagnostics.</p>
+</div>
 </div>
 <div id="pair-compatibility-model" class="section level2">
 <h2>Pair Compatibility Model</h2>
@@ -857,12 +948,12 @@ would imply a distribution that is not present in that output.</p>
 <p>This function asks whether specific observed lentil-wheat pairs have
 extra compatibility beyond additive genotype effects.</p>
 <p>The conceptual formula is:</p>
-<pre class="r"><code>wheat_trait ~ Lentil + Wheat + spatial terms + random(Combo) + random(Block)</code></pre>
+<pre class="r"><code>wheat_trait ~ Lentil + Wheat + Rep_combo + spatial terms + random(Combo) + random(Block)</code></pre>
 <p>The <code>Combo</code> random effect is the pair-specific
 compatibility value.</p>
 <p>Mathematically, within each ENV x Facet network:</p>
 <p><span class="math display">\[
-Y_i = \mu_{e,b} + L_{e,b,l(i)} + W_{e,b,w(i)} + d_{e,b,r(i)}
+Y_i = \mu_{e,b} + L_{e,b,l(i)} + W_{e,b,w(i)} + d_{e,b,q(i)}
       + f_{e,b}(R_i, C_i) + C_{e,b,c(i)} + B_{e,b,k(i)} + \varepsilon_i
 \]</span></p>
 <p>where:</p>
@@ -875,8 +966,8 @@ facet <code>b</code>.</li>
 lentil genotype <code>l</code>.</li>
 <li><code>W_{e,b,w(i)}</code> is the additive effect of the current
 wheat genotype <code>w</code>.</li>
-<li><code>d_{e,b,r(i)}</code> represents any optional fixed design
-terms.</li>
+<li><code>d_{e,b,q(i)}</code> is the fixed combo-replicate effect,
+usually <code>Rep_combo</code>.</li>
 <li><code>f_{e,b}(row_i, col_i)</code> is the spatial correction used by
 the lme4 implementation, represented by polynomial row and column terms
 plus their interaction.</li>
@@ -892,7 +983,7 @@ effect for block <code>k</code>.</li>
 = \frac{1}{n_c}\sum_{i:c(i)=c}
 \left(
 \hat{\mu}_{e,b} + \hat{L}_{e,b,l(i)} + \hat{W}_{e,b,w(i)}
-+ \hat{d}_{e,b,r(i)} + \hat{f}_{e,b}(R_i, C_i)
++ \hat{d}_{e,b,q(i)} + \hat{f}_{e,b}(R_i, C_i)
 \right)
 \]</span></p>
 <p>over the plots where that pair was observed. The corrected pair mean
@@ -932,7 +1023,32 @@ and wheat effects within that local 10 x 10 network.</p>
 <p><code>Compatibility_Value</code> is the primary output.
 <code>Compatibility_Pct</code> is optional and can be unstable when
 <code>Expected_Additive_Mean</code> is near zero or when the response is
-centered, ordinal, residualized, or can be negative.</p>
+centered, ordinal, residualized, or can be negative. Use:</p>
+<pre class="r"><code>model_pair_compatibility(
+  ...,
+  compute_compatibility_pct = TRUE,
+  pct_min_denominator = 1e-6
+)</code></pre>
+<p>If the denominator is too small, <code>Compatibility_Pct</code> is
+set to <code>NA</code> and the function warns that
+<code>Compatibility_Value</code> should be used as the primary
+interpretation.</p>
+</div>
+<div id="corrected-pair-means" class="section level3">
+<h3>Corrected Pair Means</h3>
+<p>The pair output distinguishes:</p>
+<ul>
+<li><code>Conditional_Predicted_Mean</code>: fitted mean including
+observed random design effects such as block.</li>
+<li><code>Marginal_Corrected_Pair_Mean</code>: fitted additive
+expectation plus the pair-specific <code>Combo</code> BLUP, excluding
+nuisance random block effects.</li>
+<li><code>Compatibility_Value</code>: the pair-specific
+<code>Combo</code> BLUP and preferred ranking variable.</li>
+</ul>
+<p><code>Corrected_Pair_Mean</code> is retained as an alias for
+<code>Marginal_Corrected_Pair_Mean</code> for backward
+compatibility.</p>
 </div>
 <div id="example-1" class="section level3">
 <h3>Example</h3>
@@ -945,6 +1061,7 @@ centered, ordinal, residualized, or can be negative.</p>
   combo_col = &quot;Combo&quot;,
   spatial_cols = c(&quot;Row&quot;, &quot;Col&quot;),
   baseline_col = &quot;Facet&quot;,
+  fixed_effect_cols = c(&quot;Rep_combo&quot;),
   random_effect_cols = c(&quot;Block&quot;),
   type_col = &quot;Type&quot;,
   include_checks = FALSE
@@ -1007,6 +1124,9 @@ in <code>heatmap</code> or <code>ranked_plot</code>. To include them for
 auditing:</p>
 <pre class="r"><code>plot_pair_compatibility_heatmap(pair_compatibility_pro, drop_no_signal = FALSE)
 plot_pair_compatibility_ranked(pair_compatibility_pro, drop_no_signal = FALSE)</code></pre>
+</div>
+<div id="diagnostics-and-singular-fits" class="section level3">
+<h3>Diagnostics and Singular Fits</h3>
 <p>The diagnostics table should be checked before interpreting pair
 effects. Useful columns include:</p>
 <ul>
@@ -1014,6 +1134,10 @@ effects. Useful columns include:</p>
 <li><code>N_Previous_Genotypes</code></li>
 <li><code>N_Current_Genotypes</code></li>
 <li><code>N_Combos</code></li>
+<li><code>Expected_Combos</code></li>
+<li><code>Missing_Combos</code></li>
+<li><code>Local_Factorial_Complete</code></li>
+<li><code>Expected_10x10</code></li>
 <li><code>Min_Reps_Per_Combo</code></li>
 <li><code>N_Single_Rep_Combos</code></li>
 <li><code>Status</code></li>
@@ -1023,9 +1147,13 @@ effects. Useful columns include:</p>
 </ul>
 <p>For this design, a reliable ENV x Facet group should usually have 10
 lentils, 10 wheats, 100 observed combos, and at least two plots per
-combo. If a panel appears empty in an old bar plot, that is usually a
-visualization artifact from crossing all environment and facet labels.
-The new heatmap uses only observed ENV x Facet panels.</p>
+combo. If local completeness is broken, the diagnostic
+<code>Status</code> flags <code>incomplete_local_factorial</code> or
+<code>low_replication</code>. If a panel appears empty in an old bar
+plot, that is usually a visualization artifact from crossing all
+environment and facet labels. The heatmap uses only observed ENV x Facet
+panels and should not generate fake tiles for combinations outside the
+design.</p>
 </div>
 </div>
 <div id="correlation-and-driver-analysis" class="section level2">
@@ -1114,8 +1242,21 @@ exploratory correlation.</li>
 <li>p-values and FDR values summarize statistical evidence for the
 correlation, but they do not establish causality.</li>
 </ul>
+<div id="exploratory-nature" class="section level3">
+<h3>Exploratory Nature</h3>
+<p>These correlations are exploratory because both lentil predictors and
+wheat legacy values may be estimated quantities. Correlation results
+should be interpreted as hypothesis-generating associations, not causal
+evidence. When available, SE or reliability values should be used to
+assess whether strong correlations are driven by uncertain legacy
+estimates. P-values and FDR values summarize statistical evidence for
+correlation, but they do not establish causality.</p>
+</div>
+<div id="minimum-sample-size" class="section level3">
+<h3>Minimum Sample Size</h3>
 <p>When many subsample traits are included, the focused driver plot is
-easier to read than the full heatmap:</p>
+easier to read than the full heatmap. The default minimum number of
+complete genotype pairs is now 30:</p>
 <pre class="r"><code>legacy_driver_pro &lt;- plot_legacy_driver_correlations(
   data = legacy_correlation_input,
   target_trait = &quot;Wheat_Legacy_PRO&quot;,
@@ -1128,16 +1269,48 @@ legacy_driver_pro$plot</code></pre>
 <p>The driver table reports the environment-specific correlation, R2,
 p-value, FDR, and number of genotype pairs used for each lentil
 predictor trait.</p>
-<p>Use <code>method = "spearman"</code> for rank-based exploratory
-correlations when linearity or outliers are a concern. Weighted
-correlations are optional because predictor and legacy SEs are not
-always available on the same scale. <code>prepare_wheat_legacy_targets()</code>
-carries <code>SE</code>, <code>Reliability</code>, and a derived
-<code>Weight</code> column when available. To weight correlations by the
-wheat legacy target uncertainty, use <code>weight_col = "Weight"</code>.
-Weighted correlations report <code>P_Value = NA</code> because the
+</div>
+<div id="weightedspearman-options" class="section level3">
+<h3>Weighted/Spearman Options</h3>
+<p>Use <code>method = &quot;spearman&quot;</code> for rank-based exploratory
+correlations when linearity or outliers are a concern:</p>
+<pre class="r"><code>plot_legacy_driver_correlations(
+  data = legacy_correlation_input,
+  target_trait = &quot;Wheat_Legacy_PRO&quot;,
+  method = &quot;spearman&quot;,
+  min_pairs = 30
+)</code></pre>
+<p>Weighted correlations are optional because predictor and legacy SEs
+are not always available on the same scale.
+<code>prepare_wheat_legacy_targets()</code> carries <code>SE</code>,
+<code>Reliability</code>, and a derived <code>Weight</code> column when
+available. To weight correlations by the wheat legacy target
+uncertainty, use:</p>
+<pre class="r"><code>plot_legacy_driver_correlations(
+  data = legacy_correlation_input,
+  target_trait = &quot;Wheat_Legacy_PRO&quot;,
+  method = &quot;pearson&quot;,
+  weight_col = &quot;Weight&quot;,
+  min_pairs = 30
+)</code></pre>
+<p>Weighted correlations report <code>P_Value = NA</code> because the
 weighted correlation is treated as an exploratory effect-size screen
 rather than a standard unweighted correlation test.</p>
+</div>
+<div id="microbiome-predictor-cautions" class="section level3">
+<h3>Microbiome Predictor Cautions</h3>
+<p>Microbiome predictors should be interpreted carefully because
+amplicon-derived relative abundances are compositional. Taxon-level
+predictors such as Rhizobiaceae or Bradyrhizobiaceae should preferably
+be analyzed as transformed or log-ratio variables rather than raw
+relative abundances. PCoA axes should also be checked for consistent
+orientation before interpreting the sign of correlations with wheat
+legacy values.</p>
+<p>The microbiome aggregation step should report the number of
+microbiome samples per lentil x environment and should be checked for
+imbalance across facets. Raw relative abundance should not be
+interpreted as absolute abundance.</p>
+</div>
 <div id="insight-3" class="section level3">
 <h3>Insight</h3>
 <p>This analysis asks:</p>
@@ -1164,20 +1337,22 @@ validation.</p>
 <h2>Recommended Interpretation Workflow</h2>
 <ol style="list-style-type: decimal">
 <li>Inspect trait distributions and field structure.</li>
+<li>Run <code>audit_rotation_design()</code> and confirm local 10 x 10
+completeness before modeling.</li>
 <li>Fit independent lentil and wheat trait models.</li>
 <li>Examine spatial trends to confirm field correction is needed.</li>
 <li>Estimate average lentil predecessor effects with
-<code>model_predecessor_effect()</code>.</li>
-<li>Use <code>Legacy_Value</code> for the facet-aware
+<code>model_predecessor_effect(fit_scope = &quot;env_facet&quot;)</code>.</li>
+<li>Use <code>Legacy_Value</code> for the ENV x Facet
 interpretation.</li>
-<li>Use <code>Legacy_Value_Global</code> only as a secondary
+<li>Use <code>Legacy_Value_Global</code> only as a secondary sensitivity
 comparison.</li>
 <li>Use the raw-vs-corrected plot to show how much the model corrected
 for wheat partners and spatial structure.</li>
 <li>Estimate pair compatibility with
 <code>model_pair_compatibility()</code>.</li>
-<li>Interpret pair compatibility only within observed ENV x Facet
-networks.</li>
+<li>Interpret pair compatibility only within observed ENV x Facet 10 x
+10 networks.</li>
 <li>Correlate lentil BLUPs with wheat legacy values to generate
 biological hypotheses.</li>
 </ol>
@@ -1187,12 +1362,12 @@ biological hypotheses.</li>
 <ul>
 <li>Check plots should usually be excluded from rotation-effect models
 unless the question specifically concerns checks.</li>
-<li><code>Facet</code> should be used as the comparison baseline for
-predecessor legacy values.</li>
+<li><code>Facet</code> should be used as the local comparison baseline
+for predecessor legacy values.</li>
 <li><code>Facet</code> should not be naively added as a fixed effect if
 it is redundant with genotype structure.</li>
-<li>Sparse pair compatibility results are conditional on the observed
-design.</li>
+<li>Pair compatibility results are conditional on the observed local 10
+x 10 design.</li>
 <li>Singular fits can occur in pair models when variance components are
 small or a facet has too little information. This can happen even inside
 local 10 x 10 networks and should be interpreted carefully.</li>

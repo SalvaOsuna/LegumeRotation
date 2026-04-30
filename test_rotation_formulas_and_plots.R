@@ -359,6 +359,7 @@ if (RUN_ROTATION_MODELS) {
       combo_col = "Combo",
       spatial_cols = c("Row", "Col"),
       baseline_col = "Facet",
+      fixed_effect_cols = c("Rep_combo"),
       random_effect_cols = c("Block"),
       type_col = "Type",
       include_checks = FALSE
@@ -394,6 +395,7 @@ if (RUN_ROTATION_MODELS) {
       combo_col = "Combo",
       spatial_cols = c("Row", "Col"),
       baseline_col = "Facet",
+      fixed_effect_cols = c("Rep_combo"),
       random_effect_cols = c("Block"),
       type_col = "Type",
       include_checks = FALSE

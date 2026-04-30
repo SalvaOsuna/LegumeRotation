@@ -62,6 +62,15 @@ Facet 10: W091-W100 paired with L010, L020, L030, ..., L100
 
 Wheat membership follows blocks of ten: W001-W010 are facet 1, W011-W020 are facet 2, and so on through W091-W100 in facet 10.
 
+### Replication Terms: Rep_gen vs Rep_combo
+
+The dataset contains two replicate identifiers that should not be used interchangeably:
+
+-   `Rep_gen` is the genotype-level replicate. It is appropriate for independent lentil or wheat genotype performance models, where the same genotype is represented many times within an environment.
+-   `Rep_combo` is the lentil x wheat combo replicate. It is the correct replicate design term for rotation analyses, because each observed `Combo` is replicated twice within an environment.
+
+For the rotation predecessor and pair-compatibility models, use `Rep_combo` as the replicate design term. Do not use `Rep_gen` in these rotation models, because it describes genotype-level replication rather than the two replicated plots of the same observed lentil-wheat combination.
+
 ### Why Legacy Effects Are Interpreted Within ENV x Facet
 
 Because each facet has its own wheat partner set, `Legacy_Value` is a within-facet deviation. It compares a lentil genotype against the other lentils tested with the same 10 wheat genotypes in the same environment. A cross-facet ranking of `Legacy_Value` is therefore a ranking of within-facet deviations, not a ranking from a fully connected 100 x 100 factorial.
@@ -318,10 +327,12 @@ model_traits(
   trait_cols = c("Y.ADJ"),
   gen_col = "Wheat",
   env_col = "ENV",
-  rep_col = "Rep_combo",
+  rep_col = "Rep_gen",
   spatial_cols = c("Row", "Col")
 )
 ```
+
+This independent wheat genotype model uses `Rep_gen` because the target is wheat genotype performance and each wheat genotype is represented across about 20 plots within an environment. Rotation models switch to `Rep_combo` because their experimental unit is the observed lentil-wheat combination, replicated twice.
 
 ### Insight
 
@@ -366,10 +377,12 @@ In the SpATS implementation:
 Y.ADJ ~ Lentil + Rep_combo + PSANOVA(Row, Col) + random(Wheat)
 ```
 
+Here `Rep_combo` is the relevant replicate term because each lentil-wheat `Combo` is replicated twice within an environment. `Rep_gen` is not used in this model; it belongs to independent genotype performance analyses where the same genotype has many replicate plots.
+
 Mathematically, within each environment:
 
 $$
-Y_i = \mu_e + L_{e,l(i)} + d_{e,r(i)} + W_{e,w(i)} + f_e(R_i, C_i) + \varepsilon_i
+Y_i = \mu_e + L_{e,l(i)} + d_{e,q(i)} + W_{e,w(i)} + f_e(R_i, C_i) + \varepsilon_i
 $$
 
 where:
@@ -377,7 +390,7 @@ where:
 -   `y_i` is the observed Year 2 wheat trait value for plot `i`.
 -   `mu_e` is the environment-specific mean.
 -   `L_{e,l(i)}` is the effect of the previous lentil genotype `l` grown in that plot in Year 1. This is the predecessor effect of interest.
--   `d_{e,r(i)}` is the fixed design effect, such as `Rep_combo`, for plot `i`.
+-   `d_{e,q(i)}` is the fixed combo-replicate design effect, usually `Rep_combo`, for plot `i`.
 -   `W_{e,w(i)}` is the random effect of the current wheat genotype `w` in Year 2.
 -   `f_e(row_i, col_i)` is the spatial field trend for the wheat trial.
 -   `epsilon_i` is residual plot-level error.
@@ -563,7 +576,7 @@ This function asks whether specific observed lentil-wheat pairs have extra compa
 The conceptual formula is:
 
 ``` r
-wheat_trait ~ Lentil + Wheat + spatial terms + random(Combo) + random(Block)
+wheat_trait ~ Lentil + Wheat + Rep_combo + spatial terms + random(Combo) + random(Block)
 ```
 
 The `Combo` random effect is the pair-specific compatibility value.
@@ -571,7 +584,7 @@ The `Combo` random effect is the pair-specific compatibility value.
 Mathematically, within each ENV x Facet network:
 
 $$
-Y_i = \mu_{e,b} + L_{e,b,l(i)} + W_{e,b,w(i)} + d_{e,b,r(i)}
+Y_i = \mu_{e,b} + L_{e,b,l(i)} + W_{e,b,w(i)} + d_{e,b,q(i)}
       + f_{e,b}(R_i, C_i) + C_{e,b,c(i)} + B_{e,b,k(i)} + \varepsilon_i
 $$
 
@@ -581,7 +594,7 @@ where:
 -   `mu_{e,b}` is the mean for environment `e` and facet `b`.
 -   `L_{e,b,l(i)}` is the additive effect of the previous lentil genotype `l`.
 -   `W_{e,b,w(i)}` is the additive effect of the current wheat genotype `w`.
--   `d_{e,b,r(i)}` represents any optional fixed design terms.
+-   `d_{e,b,q(i)}` is the fixed combo-replicate effect, usually `Rep_combo`.
 -   `f_{e,b}(row_i, col_i)` is the spatial correction used by the lme4 implementation, represented by polynomial row and column terms plus their interaction.
 -   `C_{e,b,c(i)}` is the random effect for the observed lentil-wheat pair `c`, stored in `Combo`.
 -   `B_{e,b,k(i)}` is the optional random block or design effect for block `k`.
@@ -594,7 +607,7 @@ $$
 = \frac{1}{n_c}\sum_{i:c(i)=c}
 \left(
 \hat{\mu}_{e,b} + \hat{L}_{e,b,l(i)} + \hat{W}_{e,b,w(i)}
-+ \hat{d}_{e,b,r(i)} + \hat{f}_{e,b}(R_i, C_i)
++ \hat{d}_{e,b,q(i)} + \hat{f}_{e,b}(R_i, C_i)
 \right)
 $$
 
@@ -663,6 +676,7 @@ pair_compatibility_yadj <- model_pair_compatibility(
   combo_col = "Combo",
   spatial_cols = c("Row", "Col"),
   baseline_col = "Facet",
+  fixed_effect_cols = c("Rep_combo"),
   random_effect_cols = c("Block"),
   type_col = "Type",
   include_checks = FALSE
