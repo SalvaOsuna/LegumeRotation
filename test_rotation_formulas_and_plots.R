@@ -139,7 +139,7 @@ lentil_met <- safe_run("inspect_met: lentil full trial", {
     unique_id_col = "Unique.Row.ID",
     env_col = "ENV",
     genotype_col = "Lentil",
-    design_cols = c("Rep_gen", "Block", "Row", "Col"),
+    design_cols = c("Rep_combo","Rep_gen", "Block", "Row", "Col"),
     trait_cols = lentil_traits,
     crop_col = "Crop"
   )
@@ -151,7 +151,7 @@ wheat_met <- safe_run("inspect_met: wheat rotation trial", {
     unique_id_col = "Unique.Row.ID",
     env_col = "ENV",
     genotype_col = "Wheat",
-    design_cols = c("Rep_combo", "Facet", "Block", "Row", "Col"),
+    design_cols = c("Rep_combo","Rep_gen", "Facet", "Block", "Row", "Col"),
     trait_cols = wheat_traits,
     crop_col = "Crop"
   )

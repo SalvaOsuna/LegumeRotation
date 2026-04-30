@@ -206,9 +206,11 @@ model_predecessor_effect <- function(data,
     final_df <- final_df |>
       dplyr::group_by(.data[["Environment"]]) |>
       dplyr::mutate(
-        Legacy_Value_Global = .data[["Corrected_Mean"]] - mean(.data[["Corrected_Mean"]], na.rm = TRUE),
-        Legacy_Pct_Global = (.data[["Legacy_Value_Global"]] / mean(.data[["Corrected_Mean"]], na.rm = TRUE)) * 100
+        .Global_Baseline_Mean = .lr_precision_weighted_mean(.data[["Corrected_Mean"]], .data[["SE"]]),
+        Legacy_Value_Global = .data[["Corrected_Mean"]] - .data[[".Global_Baseline_Mean"]],
+        Legacy_Pct_Global = (.data[["Legacy_Value_Global"]] / .data[[".Global_Baseline_Mean"]]) * 100
       ) |>
+      dplyr::select(-dplyr::all_of(".Global_Baseline_Mean")) |>
       dplyr::ungroup() |>
       dplyr::group_by(.data[["Environment"]], .data[["Trait"]]) |>
       dplyr::mutate(Confidence_Class = .lr_confidence_class(.data[["SE"]])) |>
@@ -806,6 +808,19 @@ plot_pair_compatibility_ranked <- function(x,
   stats::weighted.mean(x, w = w, na.rm = TRUE)
 }
 
+.lr_precision_weighted_mean <- function(x, se) {
+  ok <- !is.na(x)
+  if (!any(ok)) return(NA_real_)
+  x <- x[ok]
+  se <- se[ok]
+  if (length(se) != length(x) || all(is.na(se)) || all(se <= 0, na.rm = TRUE)) {
+    return(mean(x, na.rm = TRUE))
+  }
+  w <- ifelse(is.na(se) | se <= 0, NA_real_, 1 / (se^2))
+  if (all(is.na(w)) || sum(w, na.rm = TRUE) <= 0) return(mean(x, na.rm = TRUE))
+  stats::weighted.mean(x, w = w, na.rm = TRUE)
+}
+
 .lr_warn_rotation_rep_terms <- function(fixed_effect_cols = character(0),
                                         random_effect_cols = character(0)) {
   rep_terms <- c(fixed_effect_cols, random_effect_cols)
@@ -915,17 +930,18 @@ plot_pair_compatibility_ranked <- function(x,
     )
   colnames(raw_stats)[1] <- "Previous_Genotype"
 
-  grand_mean <- mean(legacy_df$Corrected_Mean, na.rm = TRUE)
+  grand_mean <- .lr_precision_weighted_mean(legacy_df$Corrected_Mean, legacy_df$SE)
   legacy_df <- legacy_df |>
     dplyr::left_join(raw_stats, by = "Previous_Genotype") |>
     dplyr::group_by(Baseline_Group) |>
     dplyr::mutate(
-      Baseline_Mean = mean(Corrected_Mean, na.rm = TRUE),
+      Baseline_Mean = .lr_precision_weighted_mean(Corrected_Mean, SE),
       Legacy_Value_Global = Corrected_Mean - grand_mean,
       Legacy_Pct_Global = (Legacy_Value_Global / grand_mean) * 100,
       Legacy_Value = Corrected_Mean - Baseline_Mean,
       Legacy_Pct = (Legacy_Value / Baseline_Mean) * 100,
-      Network_Correction = Corrected_Mean - Raw_Mean
+      Network_Correction = Corrected_Mean - Raw_Mean,
+      Total_Correction = Network_Correction
     ) |>
     dplyr::ungroup()
 
@@ -963,17 +979,18 @@ plot_pair_compatibility_ranked <- function(x,
     )
   colnames(legacy_df)[1] <- "Previous_Genotype"
 
-  grand_mean <- mean(legacy_df$Corrected_Mean, na.rm = TRUE)
+  grand_mean <- .lr_precision_weighted_mean(legacy_df$Corrected_Mean, legacy_df$SE)
   legacy_df <- legacy_df |>
     dplyr::group_by(Baseline_Group) |>
     dplyr::mutate(
       SE = NA_real_,
-      Baseline_Mean = mean(Corrected_Mean, na.rm = TRUE),
+      Baseline_Mean = .lr_precision_weighted_mean(Corrected_Mean, SE),
       Legacy_Value_Global = Corrected_Mean - grand_mean,
       Legacy_Pct_Global = (Legacy_Value_Global / grand_mean) * 100,
       Legacy_Value = Corrected_Mean - Baseline_Mean,
       Legacy_Pct = (Legacy_Value / Baseline_Mean) * 100,
-      Network_Correction = Corrected_Mean - Raw_Mean
+      Network_Correction = Corrected_Mean - Raw_Mean,
+      Total_Correction = Network_Correction
     ) |>
     dplyr::ungroup()
 

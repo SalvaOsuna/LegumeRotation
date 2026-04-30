@@ -208,7 +208,9 @@ plot_legacy_driver_correlations <- function(data,
 #' @param weight_col Optional column containing row weights. When provided,
 #'   correlations use weights from the target-trait rows.
 #'
-#' @return Data frame of environment-specific correlations, R2, p-values, and FDR.
+#' @return Data frame of environment-specific correlations, R2, p-values, and
+#'   Benjamini-Hochberg FDR values corrected within each Environment x
+#'   Target_Trait group.
 #' @export
 calculate_legacy_driver_correlations <- function(data,
                                                  target_trait,
