@@ -1,11 +1,11 @@
 ---
 title: "ACTIVATE Lentil-Wheat Rotation Experiment"
-author: ""
-date: "`r Sys.Date()`"
+author: "Salvador Osuna-Caballero"
+date: "2026-05-01"
 output: html_document
 ---
 
-# ACTIVATE Lentil-Wheat Rotation Experiment: Design, Modeling Challenges, and Analytical Targets
+# Design, Modeling Challenges, and Analytical Targets
 
 ## Objectives
 

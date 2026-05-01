@@ -161,7 +161,7 @@ lentil_trial <- safe_run("inspect_trial: lentil single-trial summary", {
   inspect_trial(
     data = dplyr::filter(lentil_treatment, ENV == unique(lentil_treatment$ENV)[1]),
     genotype_col = "Lentil",
-    design_cols = c("Rep_gen", "Block", "Row", "Col"),
+    design_cols = c("Rep_combo","Rep_gen", "Block", "Row", "Col"),
     trait_cols = lentil_traits,
     crop_col = "Crop"
   )
@@ -200,7 +200,6 @@ lentil_trait_correlation_plot <- safe_run("plot_trait_correlations: lentil YLD v
   )
 })
 show_plot(lentil_trait_correlation_plot, "lentil_trait_correlation")
-
 
 # title: Fit wheat phenotypic trait models with lme4.
 # This tests the generic BLUP and variance-output path for wheat traits and checks that wheat trait correlations can be plotted.
@@ -318,7 +317,6 @@ if (RUN_ROTATION_MODELS) {
   show_plot(avg_predecessor_pro$plot, "avg_predecessor_pro_facet_baseline")
   show_plot(avg_predecessor_pro$correction_plot, "avg_predecessor_pro_raw_vs_corrected")
 }
-
 
 # title: Export GWAS-ready legacy values.
 # This creates one facet-corrected Legacy_Value per genotype, environment, and trait, which can be used as a Year-2 legacy phenotype for lentil GWAS.
