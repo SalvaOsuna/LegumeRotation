@@ -417,6 +417,99 @@ if (RUN_ROTATION_MODELS) {
 
 # title: Export GWAS-ready legacy values.
 # This creates one facet-corrected Legacy_Value per genotype, environment, and trait, which can be used as a Year-2 legacy phenotype for lentil GWAS.
+plot_gwas_legacy_ranked_by_env <- function(data, trait) {
+  plot_df <- data |>
+    dplyr::filter(.data[["Trait"]] == trait) |>
+    dplyr::arrange(.data[["Environment"]], .data[["Legacy_Value"]]) |>
+    dplyr::mutate(
+      Plot_Genotype = paste(.data[["Environment"]], .data[["Genotype"]], sep = "___"),
+      Plot_Genotype = factor(.data[["Plot_Genotype"]], levels = unique(.data[["Plot_Genotype"]]))
+    )
+
+  ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[["Plot_Genotype"]], y = .data[["Legacy_Value"]])) +
+    ggplot2::geom_segment(
+      ggplot2::aes(
+        xend = .data[["Plot_Genotype"]],
+        y = 0,
+        yend = .data[["Legacy_Value"]]
+      ),
+      color = "gray70",
+      linewidth = 0.4
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = .data[["Legacy_Value"]] > 0),
+      size = 2.2,
+      alpha = 0.9
+    ) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "gray35") +
+    ggplot2::facet_wrap(~Environment, ncol = 1, scales = "free_x") +
+    ggplot2::scale_x_discrete(labels = function(x) sub("^.*___", "", x)) +
+    ggplot2::scale_color_manual(values = c("TRUE" = "#2C7BB6", "FALSE" = "#D7191C")) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      legend.position = "none",
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)
+    ) +
+    ggplot2::labs(
+      title = "GWAS-Ready Lentil Legacy Values",
+      subtitle = paste("Facet-corrected wheat legacy value | trait:", trait),
+      caption = "Legacy_Value is centered within ENV x Facet. Rankings compare within-facet deviations, not absolute performance across a fully connected 100 x 100 factorial.",
+      x = "Previous lentil genotype",
+      y = "Facet-corrected Legacy_Value"
+    )
+}
+
+plot_legacy_site_scatter <- function(data,
+                                     trait,
+                                     x_env = "Hunter2025",
+                                     y_env = "Clavet2025") {
+  plot_df <- data |>
+    dplyr::filter(.data[["Trait"]] == trait, .data[["Environment"]] %in% c(x_env, y_env)) |>
+    dplyr::group_by(.data[["Genotype"]], .data[["Environment"]], .data[["Trait"]]) |>
+    dplyr::summarize(Legacy_Value = mean(.data[["Legacy_Value"]], na.rm = TRUE), .groups = "drop") |>
+    tidyr::pivot_wider(names_from = "Environment", values_from = "Legacy_Value") |>
+    dplyr::filter(!is.na(.data[[x_env]]), !is.na(.data[[y_env]])) |>
+    dplyr::mutate(
+      Quadrant = dplyr::case_when(
+        .data[[x_env]] > 0 & .data[[y_env]] > 0 ~ "Positive in both sites",
+        .data[[x_env]] < 0 & .data[[y_env]] < 0 ~ "Negative in both sites",
+        TRUE ~ "Mixed response"
+      )
+    )
+
+  ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[x_env]], y = .data[[y_env]])) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "gray45") +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "gray45") +
+    ggplot2::geom_point(
+      ggplot2::aes(color = .data[["Quadrant"]]),
+      size = 2.6,
+      alpha = 0.9
+    ) +
+    ggrepel::geom_text_repel(
+      data = dplyr::filter(plot_df, .data[["Quadrant"]] != "Mixed response"),
+      ggplot2::aes(label = .data[["Genotype"]]),
+      size = 3,
+      max.overlaps = 30,
+      show.legend = FALSE
+    ) +
+    ggplot2::scale_color_manual(
+      values = c(
+        "Positive in both sites" = "#2C7BB6",
+        "Negative in both sites" = "#D7191C",
+        "Mixed response" = "gray70"
+      )
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(
+      title = "Cross-Site Lentil Legacy Effect",
+      subtitle = paste(trait, "|", x_env, "vs", y_env),
+      caption = "Blue: positive legacy effect in both sites. Red: negative legacy effect in both sites. Values are facet-centered within each environment.",
+      x = paste(x_env, "Legacy_Value"),
+      y = paste(y_env, "Legacy_Value"),
+      color = "Cross-site signal"
+    )
+}
+
 if (RUN_ROTATION_MODELS) {
   legacy_values_for_gwas <- safe_run("legacy_values for GWAS: Y.ADJ and PRO", {
     dplyr::bind_rows(
@@ -439,6 +532,26 @@ if (RUN_ROTATION_MODELS) {
   })
 
   print(head(legacy_values_for_gwas, 20))
+
+  legacy_values_for_gwas_plot_yadj <- safe_run("plot GWAS-ready legacy values: Y.ADJ", {
+    plot_gwas_legacy_ranked_by_env(legacy_values_for_gwas, trait = "Y.ADJ")
+  })
+  show_plot(legacy_values_for_gwas_plot_yadj, "legacy_values_for_gwas_yadj_ranked")
+
+  legacy_values_for_gwas_plot_pro <- safe_run("plot GWAS-ready legacy values: PRO", {
+    plot_gwas_legacy_ranked_by_env(legacy_values_for_gwas, trait = "PRO")
+  })
+  show_plot(legacy_values_for_gwas_plot_pro, "legacy_values_for_gwas_pro_ranked")
+
+  legacy_site_scatter_yadj <- safe_run("scatter legacy effect between Hunter and Clavet: Y.ADJ", {
+    plot_legacy_site_scatter(legacy_values_for_gwas, trait = "Y.ADJ")
+  })
+  show_plot(legacy_site_scatter_yadj, "legacy_site_scatter_yadj_hunter_clavet")
+
+  legacy_site_scatter_pro <- safe_run("scatter legacy effect between Hunter and Clavet: PRO", {
+    plot_legacy_site_scatter(legacy_values_for_gwas, trait = "PRO")
+  })
+  show_plot(legacy_site_scatter_pro, "legacy_site_scatter_pro_hunter_clavet")
 }
 
 # title: Test the pair-specific compatibility formula.
@@ -603,7 +716,7 @@ show_plot(legacy_driver_yadj$plot, "legacy_driver_correlations_yadj")
 
 
 # title: Inspect individual legacy-vs-trait scatter plots.
-# Use this helper to check candidate legacy drivers one trait at a time. Each panel fits a linear model within environment and annotates R2 and p-value.
+# Use this helper to check candidate legacy drivers one trait at a time. Each panel fits a linear trend and annotates Pearson r and p-value.
 plot_legacy_trait_scatter <- function(data,
                                       target_trait,
                                       predictor_trait,
@@ -637,23 +750,26 @@ plot_legacy_trait_scatter <- function(data,
         length(unique(.x[[predictor_trait]])) > 1
 
       if (!can_fit) {
-        return(data.frame(N_Pairs = n_pairs, R2 = NA_real_, P_Value = NA_real_))
+        return(data.frame(N_Pairs = n_pairs, Pearson_R = NA_real_, P_Value = NA_real_))
       }
 
-      fit <- stats::lm(stats::reformulate(predictor_trait, target_trait), data = .x)
-      fit_summary <- summary(fit)
+      correlation_test <- stats::cor.test(
+        .x[[predictor_trait]],
+        .x[[target_trait]],
+        method = "pearson"
+      )
       data.frame(
         N_Pairs = n_pairs,
-        R2 = fit_summary$r.squared,
-        P_Value = stats::coef(fit_summary)[2, "Pr(>|t|)"]
+        Pearson_R = unname(correlation_test$estimate),
+        P_Value = correlation_test$p.value
       )
     }) |>
     dplyr::ungroup() |>
     dplyr::mutate(
       Label = paste0(
-        "R2 = ", ifelse(is.na(.data[["R2"]]), "NA", sprintf("%.3f", .data[["R2"]])),
-        "\np = ", ifelse(is.na(.data[["P_Value"]]), "NA", format.pval(.data[["P_Value"]], digits = 3)),
-        "\nN = ", .data[["N_Pairs"]]
+        "r = ", ifelse(is.na(.data[["Pearson_R"]]), "NA", sprintf("%.3f", .data[["Pearson_R"]])),
+        "\np = ", ifelse(is.na(.data[["P_Value"]]), "NA", format.pval(.data[["P_Value"]], digits = 3))
+        #"\nN = ", .data[["N_Pairs"]]
       )
     )
 
@@ -682,7 +798,7 @@ legacy_scatter_yadj_fulltrial_yld <- safe_run("scatter: Wheat_Legacy_YADJ vs Ful
   plot_legacy_trait_scatter(
     data = legacy_correlation_input,
     target_trait = "Wheat_Legacy_YADJ",
-    predictor_trait = "FullTrial_YLD"
+    predictor_trait = "Microbiome_Aitchison_PC2"
   )
 })
 show_plot(legacy_scatter_yadj_fulltrial_yld, "legacy_scatter_yadj_fulltrial_yld")
@@ -691,7 +807,7 @@ legacy_scatter_pro_subsample_biomass <- safe_run("scatter: Wheat_Legacy_PRO vs S
   plot_legacy_trait_scatter(
     data = legacy_correlation_input,
     target_trait = "Wheat_Legacy_PRO",
-    predictor_trait = "Subsample_biomass.g"
+    predictor_trait = "FullTrial_YLD"
   )
 })
 show_plot(legacy_scatter_pro_subsample_biomass, "legacy_scatter_pro_subsample_biomass")
@@ -709,6 +825,10 @@ formula_test_results <- list(
   legacy_environment_significance_yadj = if (exists("legacy_environment_significance_yadj")) legacy_environment_significance_yadj else NULL,
   legacy_environment_significance_pro = if (exists("legacy_environment_significance_pro")) legacy_environment_significance_pro else NULL,
   legacy_values_for_gwas = if (exists("legacy_values_for_gwas")) legacy_values_for_gwas else NULL,
+  legacy_values_for_gwas_plot_yadj = if (exists("legacy_values_for_gwas_plot_yadj")) legacy_values_for_gwas_plot_yadj else NULL,
+  legacy_values_for_gwas_plot_pro = if (exists("legacy_values_for_gwas_plot_pro")) legacy_values_for_gwas_plot_pro else NULL,
+  legacy_site_scatter_yadj = if (exists("legacy_site_scatter_yadj")) legacy_site_scatter_yadj else NULL,
+  legacy_site_scatter_pro = if (exists("legacy_site_scatter_pro")) legacy_site_scatter_pro else NULL,
   pair_compatibility_yadj = if (exists("pair_compatibility_yadj")) pair_compatibility_yadj else NULL,
   pair_yadj_observed_check = if (exists("pair_yadj_observed_check")) pair_yadj_observed_check else NULL,
   pair_compatibility_pro = if (exists("pair_compatibility_pro")) pair_compatibility_pro else NULL,
