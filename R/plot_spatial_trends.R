@@ -9,7 +9,7 @@
 #' @return A ggplot object.
 #' @export
 #' @importFrom dplyr filter
-#' @importFrom ggplot2 ggplot aes geom_tile scale_fill_viridis_c facet_grid theme_minimal labs theme element_text
+#' @importFrom ggplot2 ggplot aes geom_tile scale_fill_gradientn facet_grid scale_y_reverse theme_minimal labs theme element_text
 plot_spatial_trends <- function(spatial_data, traits = NULL, envs = NULL, mode = "raw") {
 
   # Filter data
@@ -30,21 +30,33 @@ plot_spatial_trends <- function(spatial_data, traits = NULL, envs = NULL, mode =
     subtitle_lab <- "Spatial variation in original units"
   }
 
+  spatial_palette <- grDevices::colorRampPalette(c("#c44e52", "#f8f9fa", "#2c7a51"))(256)
+  fill_range <- range(plot_data[[fill_col]], na.rm = TRUE)
+  fill_values <- NULL
+  if (all(is.finite(fill_range)) && fill_range[1] < 0 && fill_range[2] > 0) {
+    fill_values <- (c(fill_range[1], 0, fill_range[2]) - fill_range[1]) / diff(fill_range)
+  }
+
   # Create Heatmap
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Row, y = Col, fill = .data[[fill_col]])) +
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Col, y = Row, fill = .data[[fill_col]])) +
     ggplot2::geom_tile() +
 
-    # Viridis 'magma' or 'plasma' are great for heatmaps
-    ggplot2::scale_fill_viridis_c(option = "magma", name = legend_lab) +
+    ggplot2::scale_fill_gradientn(
+      colors = spatial_palette,
+      values = fill_values,
+      name = legend_lab
+    ) +
 
     ggplot2::facet_grid(Trait ~ Environment, scales = "free") +
+
+    ggplot2::scale_y_reverse() +
 
     ggplot2::theme_minimal() +
     ggplot2::labs(
       #title = paste("Spatial Trends (", tools::toTitleCase(mode), ")", sep=""),
       #subtitle = subtitle_lab,
-      x = "Row",
-      y = "Column"
+      x = "Column",
+      y = "Row"
     ) +
     ggplot2::theme(
       strip.text = ggplot2::element_text(face = "bold", size = 10),

@@ -224,7 +224,6 @@ wheat_trait_correlation_plot <- safe_run("plot_trait_correlations: wheat Y.ADJ v
 })
 show_plot(wheat_trait_correlation_plot, "wheat_trait_correlation")
 
-
 # title: Fit spatial SpATS trait models and spatial trend plots.
 # This tests the spatial formula in model_traits and the heatmap function that visualizes corrected field heterogeneity.
 if (RUN_SPATS_TRAIT_MODELS) {
@@ -232,7 +231,7 @@ if (RUN_SPATS_TRAIT_MODELS) {
     model_traits(
       data = lentil_treatment,
       method = "SpATS",
-      trait_cols = c("YLD"),
+      trait_cols = c("lodging"),
       gen_col = "Lentil",
       env_col = "ENV",
       rep_col = "Rep_gen",
@@ -240,14 +239,23 @@ if (RUN_SPATS_TRAIT_MODELS) {
     )
   })
 
-  lentil_spatial_plot <- safe_run("plot_spatial_trends: lentil YLD", {
+  lentil_spatial_plot <- safe_run("plot_spatial_trends: lentil lodging", {
     plot_spatial_trends(
       spatial_data = lentil_spats_models$spatial_trends,
-      traits = "YLD",
+      traits = "lodging",
       mode = "percentage"
     )
   })
-  show_plot(lentil_spatial_plot, "lentil_spatial_trends_yld")
+  p1<-show_plot(lentil_spatial_plot, "lentil_spatial_trends_yld")
+  p2<-show_plot(lentil_spatial_plot, "lentil_spatial_trends_yld")
+  p3<-show_plot(lentil_spatial_plot, "lentil_spatial_trends_yld")
+  p4<-show_plot(lentil_spatial_plot, "lentil_spatial_trends_yld")
+  library(patchwork)
+  sp_trend <- p1+labs(x = NULL)+ p2 +labs(x = NULL)+ p3 +labs(x = NULL) +p4 + plot_layout(nrow = 4, byrow = FALSE)+
+    plot_annotation(tag_levels = 'a', tag_suffix = ')')
+
+  ggsave(plot = sp_trend, filename = "C:/Users/tlv329/OneDrive - University of Saskatchewan/UsasK/github/ACTIVATE_myY/Figures/Fig2_SpatialTrends.png",
+         width = 11,height = 8,dpi = 600,bg = "white")
 
   wheat_spats_models <- safe_run("model_traits SpATS: wheat Y.ADJ", {
     model_traits(
@@ -269,8 +277,24 @@ if (RUN_SPATS_TRAIT_MODELS) {
     )
   })
   show_plot(wheat_spatial_plot, "wheat_spatial_trends_yadj")
-}
 
+  # title: Visualize all fitted spatial trends together.
+  # This creates one heatmap overview faceted by fitted trait and environment, making it easy to compare field gradients across the SpATS models in this script.
+  spatial_trend_heatmaps_all <- safe_run("plot_spatial_trends: all fitted traits by env", {
+    spatial_trend_overview <- dplyr::bind_rows(
+      lentil_spats_models$spatial_trends |>
+        dplyr::mutate(Trait = paste("Lentil", .data[["Trait"]], sep = "_")),
+      wheat_spats_models$spatial_trends |>
+        dplyr::mutate(Trait = paste("Wheat", .data[["Trait"]], sep = "_"))
+    )
+
+    plot_spatial_trends(
+      spatial_data = spatial_trend_overview,
+      mode = "percentage"
+    )
+  })
+  show_plot(spatial_trend_heatmaps_all, "spatial_trend_heatmaps_all_traits_envs")
+}
 
 # title: Test the preferred average predecessor effect formula.
 # This answers which lentil genotypes leave better wheat conditions using a facet-aware ENV x Facet baseline and wheat genotype correction.
@@ -820,6 +844,7 @@ formula_test_results <- list(
   wheat_met = wheat_met,
   lentil_lme4_models = lentil_lme4_models,
   wheat_lme4_models = wheat_lme4_models,
+  spatial_trend_heatmaps_all = if (exists("spatial_trend_heatmaps_all")) spatial_trend_heatmaps_all else NULL,
   avg_predecessor_yadj = if (exists("avg_predecessor_yadj")) avg_predecessor_yadj else NULL,
   avg_predecessor_pro = if (exists("avg_predecessor_pro")) avg_predecessor_pro else NULL,
   legacy_environment_significance_yadj = if (exists("legacy_environment_significance_yadj")) legacy_environment_significance_yadj else NULL,
